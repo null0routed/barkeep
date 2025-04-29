@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "D&D Character Sheet & AI Assistant",
+  title: "Barkeep",
   description: "A comprehensive D&D character management system with AI assistance",
     generator: 'v0.dev'
 }
