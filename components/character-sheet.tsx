@@ -32,9 +32,19 @@ interface CharacterSheetProps {
   character: CharacterData
   setCharacter: React.Dispatch<React.SetStateAction<CharacterData>>
   chatMessages: ChatMessage[]
+  apiUrl?: string
+  apiKey?: string
+  model?: string
 }
 
-export default function CharacterSheet({ character, setCharacter, chatMessages }: CharacterSheetProps) {
+export default function CharacterSheet({
+  character,
+  setCharacter,
+  chatMessages,
+  apiUrl = "https://api.openai.com/v1/chat/completions",
+  apiKey = "",
+  model = "gpt-4o-mini",
+}: CharacterSheetProps) {
   const [editingInventoryIndex, setEditingInventoryIndex] = useState<number | null>(null)
   const [editingEquipmentIndex, setEditingEquipmentIndex] = useState<number | null>(null)
   const [editingTraitIndex, setEditingTraitIndex] = useState<number | null>(null)
@@ -904,6 +914,9 @@ export default function CharacterSheet({ character, setCharacter, chatMessages }
         onAdd={addInventoryItem}
         type="inventory"
         chatMessages={chatMessages}
+        apiUrl={apiUrl}
+        apiKey={apiKey}
+        model={model}
       />
 
       <AddItemDialog
@@ -912,6 +925,9 @@ export default function CharacterSheet({ character, setCharacter, chatMessages }
         onAdd={addEquipmentItem}
         type="equipment"
         chatMessages={chatMessages}
+        apiUrl={apiUrl}
+        apiKey={apiKey}
+        model={model}
       />
 
       <AddProficiencyDialog open={isAddProficiencyOpen} onOpenChange={setIsAddProficiencyOpen} onAdd={addProficiency} />

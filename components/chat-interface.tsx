@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import type { ChatMessage } from "@/lib/types"
 import { SendIcon, SettingsIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import MarkdownRenderer from "./markdown-renderer"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -76,7 +77,7 @@ export default function ChatInterface({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY || ""}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model: model,
@@ -113,7 +114,7 @@ export default function ChatInterface({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-150px)]">
+    <div className="flex flex-col h-full">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold">AI Chat</h2>
         <Sheet>
@@ -147,11 +148,10 @@ export default function ChatInterface({
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Your API key"
+                  placeholder="Enter your API key (required for most services)"
                 />
                 <p className="text-xs text-muted-foreground">
-                  If not provided, will use NEXT_PUBLIC_OPENAI_API_KEY environment variable. Some local servers don't
-                  require an API key.
+                  An API key is required for OpenAI services. Some local servers may not require a key.
                 </p>
               </div>
               <div className="space-y-2">
@@ -181,8 +181,8 @@ export default function ChatInterface({
         </Sheet>
       </div>
 
-      <Card className="flex-1 flex flex-col">
-        <CardContent className="flex-1 overflow-y-auto p-4">
+      <Card className="flex flex-col h-[600px]">
+        <CardContent className="flex-1 overflow-y-auto p-4 h-[calc(600px-56px)]">
           <div className="space-y-4">
             {messages.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
@@ -196,7 +196,7 @@ export default function ChatInterface({
                       message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
                     }`}
                   >
-                    {message.content}
+                    {message.role === "assistant" ? <MarkdownRenderer content={message.content} /> : message.content}
                   </div>
                 </div>
               ))
@@ -209,7 +209,7 @@ export default function ChatInterface({
             <div ref={messagesEndRef} />
           </div>
         </CardContent>
-        <CardFooter className="border-t p-3">
+        <CardFooter className="border-t p-3 h-[56px]">
           <form onSubmit={handleSubmit} className="flex w-full gap-2">
             <Input
               value={input}
