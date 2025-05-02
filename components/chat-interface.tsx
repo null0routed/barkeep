@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import type { ChatMessage } from "@/lib/types"
+import type { ChatMessage, CampaignSummary } from "@/lib/types"
 import { SendIcon, SettingsIcon, TrashIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
+import CampaignSummaryComponent from "./campaign-summary"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -34,7 +35,12 @@ interface ChatInterfaceProps {
   setModel: React.Dispatch<React.SetStateAction<string>>
   systemPrompt: string
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
+  campaignSummary: CampaignSummary
+  setCampaignSummary: React.Dispatch<React.SetStateAction<CampaignSummary>>
 }
+
+// Maximum number of previous messages to include in the context
+const MAX_PREVIOUS_MESSAGES = 6
 
 export default function ChatInterface({
   messages,
@@ -47,11 +53,15 @@ export default function ChatInterface({
   setModel,
   systemPrompt,
   setSystemPrompt,
+  campaignSummary,
+  setCampaignSummary,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isUpdatingSummary, setIsUpdatingSummary] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
+  const [maxMessages, setMaxMessages] = useState(MAX_PREVIOUS_MESSAGES)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -99,10 +109,23 @@ export default function ChatInterface({
     setIsLoading(true)
 
     try {
-      // Prepare the messages for the API
+      // Get the most recent messages, limited by maxMessages
+      const recentMessages = messages.slice(-maxMessages)
+
+      // Prepare the messages for the API with campaign summary
       const apiMessages = [
-        { role: "system", content: systemPrompt },
-        ...messages.map((msg) => ({ role: msg.role, content: msg.content })),
+        {
+          role: "system",
+          content:
+            `${systemPrompt}\n\n` +
+            `CAMPAIGN SUMMARY:\n` +
+            `Recent Events: ${campaignSummary.conversationSummary || "This is a new conversation."}\n\n` +
+            `Plot Points: ${campaignSummary.plotPoints || "None"}\n` +
+            `NPCs: ${campaignSummary.npcs || "None"}\n` +
+            `Locations: ${campaignSummary.locations || "None"}\n` +
+            `Quests: ${campaignSummary.quests || "None"}`,
+        },
+        ...recentMessages.map((msg) => ({ role: msg.role, content: msg.content })),
         { role: "user", content: input },
       ]
 
@@ -133,6 +156,9 @@ export default function ChatInterface({
         content: data.choices[0].message.content,
       }
       setMessages((prev) => [...prev, assistantMessage])
+
+      // Update the campaign summary after receiving a response
+      await updateCampaignSummary([...messages, userMessage, assistantMessage])
     } catch (error) {
       console.error("Error calling API:", error)
       // Add error message
@@ -145,6 +171,99 @@ export default function ChatInterface({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const updateCampaignSummary = async (messageHistory: ChatMessage[]) => {
+    if (!apiKey || !apiUrl) return
+
+    setIsUpdatingSummary(true)
+
+    try {
+      // Get the most recent messages for context
+      const recentMessages = messageHistory.slice(-15)
+
+      // Create a prompt to update the campaign summary
+      const updatePrompt = `
+        Based on the following conversation between a player and a DM, please update the campaign summary.
+        Extract key information and provide concise updates for each section.
+        
+        CONVERSATION:
+        ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
+        
+        CURRENT CAMPAIGN SUMMARY:
+        Conversation Summary: ${campaignSummary.conversationSummary || "This is a new conversation."}
+        Plot Points: ${campaignSummary.plotPoints || "None"}
+        NPCs: ${campaignSummary.npcs || "None"}
+        Locations: ${campaignSummary.locations || "None"}
+        Quests: ${campaignSummary.quests || "None"}
+        
+        Please provide an updated campaign summary in the following format:
+        
+        CONVERSATION SUMMARY:
+        [A concise summary (max 200 words) of the recent conversation and key developments]
+        
+        PLOT POINTS:
+        [Updated plot points]
+        
+        NPCS:
+        [Updated NPCs with brief descriptions]
+        
+        LOCATIONS:
+        [Updated locations with brief descriptions]
+        
+        QUESTS:
+        [Updated active and completed quests]
+      `
+
+      // Call the API to generate updated summary
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: "You are a helpful assistant that organizes D&D campaign information." },
+            { role: "user", content: updatePrompt },
+          ],
+          max_tokens: 1000,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const content = data.choices[0].message.content.trim()
+
+      // Parse the response to extract the updated summary
+      const conversationMatch = content.match(/CONVERSATION SUMMARY:\s*([\s\S]*?)(?=\s*PLOT POINTS:|$)/i)
+      const plotPointsMatch = content.match(/PLOT POINTS:\s*([\s\S]*?)(?=\s*NPCS:|$)/i)
+      const npcsMatch = content.match(/NPCS:\s*([\s\S]*?)(?=\s*LOCATIONS:|$)/i)
+      const locationsMatch = content.match(/LOCATIONS:\s*([\s\S]*?)(?=\s*QUESTS:|$)/i)
+      const questsMatch = content.match(/QUESTS:\s*([\s\S]*?)(?=$)/i)
+
+      // Update the campaign summary
+      setCampaignSummary({
+        conversationSummary: conversationMatch ? conversationMatch[1].trim() : campaignSummary.conversationSummary,
+        plotPoints: plotPointsMatch ? plotPointsMatch[1].trim() : campaignSummary.plotPoints,
+        npcs: npcsMatch ? npcsMatch[1].trim() : campaignSummary.npcs,
+        locations: locationsMatch ? locationsMatch[1].trim() : campaignSummary.locations,
+        quests: questsMatch ? questsMatch[1].trim() : campaignSummary.quests,
+        lastUpdated: new Date().toLocaleString(),
+      })
+    } catch (error) {
+      console.error("Error updating campaign summary:", error)
+    } finally {
+      setIsUpdatingSummary(false)
+    }
+  }
+
+  const handleGenerateUpdate = async () => {
+    await updateCampaignSummary(messages)
   }
 
   const handleClearChat = () => {
@@ -216,6 +335,22 @@ export default function ChatInterface({
                   </p>
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="max-messages">Max Previous Messages</Label>
+                  <Input
+                    id="max-messages"
+                    type="number"
+                    value={maxMessages}
+                    onChange={(e) =>
+                      setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || MAX_PREVIOUS_MESSAGES))
+                    }
+                    min={1}
+                    max={20}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum number of previous messages to include in the context (1-20).
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="system-prompt">System Prompt</Label>
                   <Textarea
                     id="system-prompt"
@@ -231,7 +366,14 @@ export default function ChatInterface({
         </div>
       </div>
 
-      <Card className="flex flex-col" style={{ height: `${chatHeight}px` }}>
+      <CampaignSummaryComponent
+        summary={campaignSummary}
+        onUpdate={setCampaignSummary}
+        onGenerateUpdate={handleGenerateUpdate}
+        isUpdating={isUpdatingSummary}
+      />
+
+      <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
         <CardContent className="flex-1 overflow-y-auto p-4" style={{ height: `calc(${chatHeight}px - 56px)` }}>
           <div className="space-y-4">
             {messages.length === 0 ? (

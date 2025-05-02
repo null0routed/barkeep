@@ -89,3 +89,21 @@
     @apply p-3;
   }
 }
+
+.card-header-compact {
+  min-height: 40px;
+}
+
+@layer base {
+  .card-header-compact h3 {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:flex-1 {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+}

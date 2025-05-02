@@ -22,11 +22,14 @@ import type {
   Trait,
   Feat,
   ItemRarity,
+  Spell,
+  SpellSchool,
 } from "@/lib/types"
 import AddItemDialog from "./add-item-dialog"
 import AddProficiencyDialog from "./add-proficiency-dialog"
 import AddTraitDialog from "./add-trait-dialog"
 import AddFeatDialog from "./add-feat-dialog"
+import AddSpellDialog from "./add-spell-dialog"
 
 interface CharacterSheetProps {
   character: CharacterData
@@ -68,8 +71,16 @@ export default function CharacterSheet({
   const [isAddProficiencyOpen, setIsAddProficiencyOpen] = useState(false)
   const [isAddTraitOpen, setIsAddTraitOpen] = useState(false)
   const [isAddFeatOpen, setIsAddFeatOpen] = useState(false)
-  const [basicInfoOpen, setBasicInfoOpen] = useState(true)
-  const [abilityScoresOpen, setAbilityScoresOpen] = useState(true)
+  const [isAddSpellOpen, setIsAddSpellOpen] = useState(false)
+  const [editingSpell, setEditingSpell] = useState<Spell | null>(null)
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false)
+  const [abilityScoresOpen, setAbilityScoresOpen] = useState(false)
+  const [combatStatsOpen, setCombatStatsOpen] = useState(false)
+  const [savingThrowsOpen, setSavingThrowsOpen] = useState(false)
+  const [spellSlotsOpen, setSpellSlotsOpen] = useState(false)
+
+  // Calculate proficiency bonus based on level
+  const proficiencyBonus = Math.ceil(1 + Number.parseInt(character.level || "1") / 4)
 
   const handleBasicInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -88,6 +99,103 @@ export default function CharacterSheet({
         [name]: Number.parseInt(value) || 0,
       },
     }))
+  }
+
+  const handleCombatStatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setCharacter((prev) => ({
+      ...prev,
+      combatStats: {
+        ...prev.combatStats,
+        [name]: Number.parseInt(value) || 0,
+      },
+    }))
+  }
+
+  const handleSavingThrowChange = (ability: keyof typeof character.savingThrows, value: boolean) => {
+    setCharacter((prev) => ({
+      ...prev,
+      savingThrows: {
+        ...prev.savingThrows,
+        [ability]: value,
+      },
+    }))
+  }
+
+  const handleSpellSlotTotalChange = (level: number, total: number) => {
+    const levelKey = `level${level}` as keyof typeof character.spellSlots
+
+    setCharacter((prev) => {
+      // Create a new array of used slots with the correct length
+      const newUsed = Array(total).fill(false)
+
+      // Copy over existing used values if they exist
+      if (prev.spellSlots[levelKey].used) {
+        prev.spellSlots[levelKey].used.forEach((used, i) => {
+          if (i < total) {
+            newUsed[i] = used
+          }
+        })
+      }
+
+      return {
+        ...prev,
+        spellSlots: {
+          ...prev.spellSlots,
+          [levelKey]: {
+            ...prev.spellSlots[levelKey],
+            total,
+            used: newUsed,
+          },
+        },
+      }
+    })
+  }
+
+  const handleSpellsKnownChange = (level: number | "cantrips", known: number) => {
+    if (level === "cantrips") {
+      setCharacter((prev) => ({
+        ...prev,
+        spellSlots: {
+          ...prev.spellSlots,
+          cantrips: {
+            known,
+          },
+        },
+      }))
+    } else {
+      const levelKey = `level${level}` as keyof typeof character.spellSlots
+      setCharacter((prev) => ({
+        ...prev,
+        spellSlots: {
+          ...prev.spellSlots,
+          [levelKey]: {
+            ...prev.spellSlots[levelKey],
+            known,
+          },
+        },
+      }))
+    }
+  }
+
+  const handleSpellSlotUseChange = (level: number, index: number, used: boolean) => {
+    const levelKey = `level${level}` as keyof typeof character.spellSlots
+
+    setCharacter((prev) => {
+      const newUsed = [...prev.spellSlots[levelKey].used]
+      newUsed[index] = used
+
+      return {
+        ...prev,
+        spellSlots: {
+          ...prev.spellSlots,
+          [levelKey]: {
+            ...prev.spellSlots[levelKey],
+            used: newUsed,
+          },
+        },
+      }
+    })
   }
 
   const handleSkillChange = (index: number, field: "proficient" | "expertise", value: boolean) => {
@@ -237,6 +345,38 @@ export default function CharacterSheet({
     }))
   }
 
+  // Spell management
+  const addSpell = (spell: Spell) => {
+    if (editingSpell) {
+      // Update existing spell
+      setCharacter((prev) => ({
+        ...prev,
+        spells: prev.spells.map((s) => (s.id === spell.id ? spell : s)),
+      }))
+      setEditingSpell(null)
+    } else {
+      // Add new spell
+      setCharacter((prev) => ({
+        ...prev,
+        spells: [...prev.spells, spell],
+      }))
+    }
+  }
+
+  const removeSpell = (id: string) => {
+    setCharacter((prev) => ({
+      ...prev,
+      spells: prev.spells.filter((s) => s.id !== id),
+    }))
+  }
+
+  const togglePrepared = (id: string) => {
+    setCharacter((prev) => ({
+      ...prev,
+      spells: prev.spells.map((spell) => (spell.id === id ? { ...spell, prepared: !spell.prepared } : spell)),
+    }))
+  }
+
   // Editing functions
   const startEditingInventory = (index: number) => {
     setEditingInventoryIndex(index)
@@ -256,6 +396,11 @@ export default function CharacterSheet({
   const startEditingFeat = (index: number) => {
     setEditingFeatIndex(index)
     setTempFeat(character.feats[index])
+  }
+
+  const startEditingSpell = (spell: Spell) => {
+    setEditingSpell(spell)
+    setIsAddSpellOpen(true)
   }
 
   const cancelEditingInventory = () => {
@@ -322,11 +467,54 @@ export default function CharacterSheet({
     }
   }
 
+  // Helper function to calculate ability modifier
+  const getAbilityModifier = (score: number) => {
+    return Math.floor((score - 10) / 2)
+  }
+
+  // Helper function to format modifier as string with sign
+  const formatModifier = (modifier: number) => {
+    return modifier >= 0 ? `+${modifier}` : `${modifier}`
+  }
+
+  // Helper function to get spell school color
+  const getSpellSchoolColor = (school: SpellSchool) => {
+    switch (school) {
+      case "abjuration":
+        return "bg-blue-200 text-blue-800"
+      case "conjuration":
+        return "bg-amber-200 text-amber-800"
+      case "divination":
+        return "bg-indigo-200 text-indigo-800"
+      case "enchantment":
+        return "bg-pink-200 text-pink-800"
+      case "evocation":
+        return "bg-red-200 text-red-800"
+      case "illusion":
+        return "bg-purple-200 text-purple-800"
+      case "necromancy":
+        return "bg-gray-200 text-gray-800"
+      case "transmutation":
+        return "bg-green-200 text-green-800"
+      default:
+        return "bg-gray-200 text-gray-800"
+    }
+  }
+
+  // Helper function to format spell level
+  const formatSpellLevel = (level: number) => {
+    if (level === 0) return "Cantrip"
+    if (level === 1) return "1st Level"
+    if (level === 2) return "2nd Level"
+    if (level === 3) return "3rd Level"
+    return `${level}th Level`
+  }
+
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between px-4">
-          <CardTitle>Basic Information</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+          <CardTitle className="text-base">Basic Information</CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -371,8 +559,64 @@ export default function CharacterSheet({
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between px-4">
-          <CardTitle>Ability Scores</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+          <CardTitle className="text-base">Combat Stats</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCombatStatsOpen(!combatStatsOpen)}
+            aria-label={combatStatsOpen ? "Collapse combat stats" : "Expand combat stats"}
+          >
+            {combatStatsOpen ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+          </Button>
+        </CardHeader>
+        {combatStatsOpen && (
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="armorClass">Armor Class</Label>
+                <Input
+                  id="armorClass"
+                  name="armorClass"
+                  type="number"
+                  value={character.combatStats.armorClass}
+                  onChange={handleCombatStatChange}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currentHp">Current HP</Label>
+                <Input
+                  id="currentHp"
+                  name="currentHp"
+                  type="number"
+                  value={character.combatStats.currentHp}
+                  onChange={handleCombatStatChange}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxHp">Max HP</Label>
+                <Input
+                  id="maxHp"
+                  name="maxHp"
+                  type="number"
+                  value={character.combatStats.maxHp}
+                  onChange={handleCombatStatChange}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="proficiencyBonus">Proficiency Bonus</Label>
+                <div className="h-10 px-3 py-2 rounded-md border border-input bg-muted flex items-center justify-center font-medium">
+                  +{proficiencyBonus}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+          <CardTitle className="text-base">Ability Scores</CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -394,7 +638,9 @@ export default function CharacterSheet({
                   value={character.stats.strength}
                   onChange={handleStatChange}
                 />
-                <div className="text-center text-sm">Modifier: {Math.floor((character.stats.strength - 10) / 2)}</div>
+                <div className="text-center text-sm">
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.strength))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dexterity">Dexterity</Label>
@@ -405,7 +651,9 @@ export default function CharacterSheet({
                   value={character.stats.dexterity}
                   onChange={handleStatChange}
                 />
-                <div className="text-center text-sm">Modifier: {Math.floor((character.stats.dexterity - 10) / 2)}</div>
+                <div className="text-center text-sm">
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.dexterity))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="constitution">Constitution</Label>
@@ -417,7 +665,7 @@ export default function CharacterSheet({
                   onChange={handleStatChange}
                 />
                 <div className="text-center text-sm">
-                  Modifier: {Math.floor((character.stats.constitution - 10) / 2)}
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.constitution))}
                 </div>
               </div>
               <div className="space-y-2">
@@ -430,7 +678,7 @@ export default function CharacterSheet({
                   onChange={handleStatChange}
                 />
                 <div className="text-center text-sm">
-                  Modifier: {Math.floor((character.stats.intelligence - 10) / 2)}
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.intelligence))}
                 </div>
               </div>
               <div className="space-y-2">
@@ -442,7 +690,9 @@ export default function CharacterSheet({
                   value={character.stats.wisdom}
                   onChange={handleStatChange}
                 />
-                <div className="text-center text-sm">Modifier: {Math.floor((character.stats.wisdom - 10) / 2)}</div>
+                <div className="text-center text-sm">
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.wisdom))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="charisma">Charisma</Label>
@@ -453,27 +703,172 @@ export default function CharacterSheet({
                   value={character.stats.charisma}
                   onChange={handleStatChange}
                 />
-                <div className="text-center text-sm">Modifier: {Math.floor((character.stats.charisma - 10) / 2)}</div>
+                <div className="text-center text-sm">
+                  Modifier: {formatModifier(getAbilityModifier(character.stats.charisma))}
+                </div>
               </div>
             </div>
           </CardContent>
         )}
       </Card>
 
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+          <CardTitle className="text-base">Saving Throws</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSavingThrowsOpen(!savingThrowsOpen)}
+            aria-label={savingThrowsOpen ? "Collapse saving throws" : "Expand saving throws"}
+          >
+            {savingThrowsOpen ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+          </Button>
+        </CardHeader>
+        {savingThrowsOpen && (
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {(Object.keys(character.savingThrows) as Array<keyof typeof character.savingThrows>).map((ability) => {
+                const abilityScore = character.stats[ability]
+                const baseModifier = getAbilityModifier(abilityScore)
+                const isProficient = character.savingThrows[ability]
+                const totalModifier = baseModifier + (isProficient ? proficiencyBonus : 0)
+
+                return (
+                  <div key={ability} className="flex flex-col items-center p-2 border rounded-md">
+                    <div className="text-lg font-bold">{formatModifier(totalModifier)}</div>
+                    <div className="text-sm capitalize mb-2">{ability}</div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`save-${ability}`}
+                        checked={isProficient}
+                        onCheckedChange={(checked) => handleSavingThrowChange(ability, checked as boolean)}
+                      />
+                      <Label htmlFor={`save-${ability}`} className="text-xs">
+                        Proficient
+                      </Label>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+          <CardTitle className="text-base">Spell Slots</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSpellSlotsOpen(!spellSlotsOpen)}
+            aria-label={spellSlotsOpen ? "Collapse spell slots" : "Expand spell slots"}
+          >
+            {spellSlotsOpen ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+          </Button>
+        </CardHeader>
+        {spellSlotsOpen && (
+          <CardContent>
+            <div className="space-y-6">
+              {/* Cantrips */}
+              <div className="border rounded-md p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-medium">Cantrips</h3>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="cantrips-known" className="text-sm">
+                      Known:
+                    </Label>
+                    <Input
+                      id="cantrips-known"
+                      type="number"
+                      value={character.spellSlots.cantrips.known}
+                      onChange={(e) => handleSpellsKnownChange("cantrips", Number.parseInt(e.target.value) || 0)}
+                      className="w-16 h-8 text-center"
+                      min={0}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Spell Levels 1-9 */}
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((level) => {
+                const levelKey = `level${level}` as keyof typeof character.spellSlots
+                const { total, used, known } = character.spellSlots[levelKey]
+
+                return (
+                  <div key={level} className="border rounded-md p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium">Level {level}</h3>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`spells-known-${level}`} className="text-sm">
+                            Known:
+                          </Label>
+                          <Input
+                            id={`spells-known-${level}`}
+                            type="number"
+                            value={known}
+                            onChange={(e) => handleSpellsKnownChange(level, Number.parseInt(e.target.value) || 0)}
+                            className="w-16 h-8 text-center"
+                            min={0}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`spell-slots-${level}`} className="text-sm">
+                            Slots:
+                          </Label>
+                          <Input
+                            id={`spell-slots-${level}`}
+                            type="number"
+                            value={total}
+                            onChange={(e) => handleSpellSlotTotalChange(level, Number.parseInt(e.target.value) || 0)}
+                            className="w-16 h-8 text-center"
+                            min={0}
+                            max={9}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {total > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: total }).map((_, index) => (
+                          <div key={index} className="flex items-center gap-1">
+                            <Checkbox
+                              id={`spell-slot-${level}-${index}`}
+                              checked={used[index] || false}
+                              onCheckedChange={(checked) => handleSpellSlotUseChange(level, index, checked as boolean)}
+                            />
+                            <Label htmlFor={`spell-slot-${level}-${index}`} className="text-xs">
+                              Used
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       <Tabs defaultValue="inventory">
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="equipment">Equipment</TabsTrigger>
           <TabsTrigger value="proficiencies">Proficiencies</TabsTrigger>
           <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="traits">Traits</TabsTrigger>
           <TabsTrigger value="feats">Feats</TabsTrigger>
+          <TabsTrigger value="spells">Spells</TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Inventory</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Inventory</CardTitle>
               <Button onClick={() => setIsAddInventoryOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" /> Add Item
               </Button>
@@ -575,8 +970,8 @@ export default function CharacterSheet({
 
         <TabsContent value="equipment">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Equipment</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Equipment</CardTitle>
               <Button onClick={() => setIsAddEquipmentOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" /> Add Equipment
               </Button>
@@ -683,8 +1078,8 @@ export default function CharacterSheet({
 
         <TabsContent value="proficiencies">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Proficiencies</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Proficiencies</CardTitle>
               <Button onClick={() => setIsAddProficiencyOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" /> Add Proficiency
               </Button>
@@ -717,25 +1112,24 @@ export default function CharacterSheet({
 
         <TabsContent value="skills">
           <Card>
-            <CardHeader>
-              <CardTitle>Skills</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Skills</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {character.skills.map((skill, index) => {
-                  const abilityMod = Math.floor((character.stats[skill.ability] - 10) / 2)
-                  const profBonus = Math.ceil(1 + Number.parseInt(character.level) / 4)
+                  const abilityMod = getAbilityModifier(character.stats[skill.ability])
                   let totalBonus = abilityMod
 
                   if (skill.proficient) {
-                    totalBonus += profBonus
+                    totalBonus += proficiencyBonus
                   }
 
                   if (skill.expertise) {
-                    totalBonus += profBonus
+                    totalBonus += proficiencyBonus
                   }
 
-                  const bonusText = totalBonus >= 0 ? `+${totalBonus}` : totalBonus.toString()
+                  const bonusText = formatModifier(totalBonus)
 
                   return (
                     <div key={index} className="flex items-center justify-between border-b pb-2">
@@ -779,8 +1173,8 @@ export default function CharacterSheet({
 
         <TabsContent value="traits">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Traits</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Traits</CardTitle>
               <Button onClick={() => setIsAddTraitOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" /> Add Trait
               </Button>
@@ -848,8 +1242,8 @@ export default function CharacterSheet({
 
         <TabsContent value="feats">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Feats</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Feats</CardTitle>
               <Button onClick={() => setIsAddFeatOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" /> Add Feat
               </Button>
@@ -906,6 +1300,99 @@ export default function CharacterSheet({
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="spells">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+              <CardTitle className="text-base">Spells</CardTitle>
+              <Button
+                onClick={() => {
+                  setEditingSpell(null)
+                  setIsAddSpellOpen(true)
+                }}
+              >
+                <PlusIcon className="h-4 w-4 mr-2" /> Add Spell
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {character.spells.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">No spells</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Group spells by level */}
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((level) => {
+                    const spellsAtLevel = character.spells.filter((spell) => spell.level === level)
+                    if (spellsAtLevel.length === 0) return null
+
+                    return (
+                      <div key={level} className="space-y-2">
+                        <h3 className="font-medium">{formatSpellLevel(level)}</h3>
+                        <div className="space-y-2">
+                          {spellsAtLevel.map((spell) => (
+                            <div key={spell.id} className="border rounded-md p-3">
+                              <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold">{spell.name}</h4>
+                                  <Badge className={getSpellSchoolColor(spell.school)}>
+                                    {spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
+                                  </Badge>
+                                  {level > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <Checkbox
+                                        id={`prepared-${spell.id}`}
+                                        checked={spell.prepared}
+                                        onCheckedChange={() => togglePrepared(spell.id)}
+                                      />
+                                      <Label htmlFor={`prepared-${spell.id}`} className="text-xs">
+                                        Prepared
+                                      </Label>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button size="icon" variant="ghost" onClick={() => startEditingSpell(spell)}>
+                                    <EditIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => removeSpell(spell.id)}>
+                                    <Trash2Icon className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-sm">
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
+                                  <div>
+                                    <span className="font-medium">Range:</span> {spell.range}
+                                  </div>
+                                  {spell.target && (
+                                    <div>
+                                      <span className="font-medium">Target:</span> {spell.target}
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="font-medium">Components:</span>{" "}
+                                    {[spell.verbal ? "V" : "", spell.somatic ? "S" : "", spell.material ? "M" : ""]
+                                      .filter(Boolean)
+                                      .join(", ")}
+                                  </div>
+                                </div>
+                                {spell.material && spell.materialComponents && (
+                                  <div className="mb-2">
+                                    <span className="font-medium">Materials:</span> {spell.materialComponents}
+                                  </div>
+                                )}
+                                <div>{spell.description}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <AddItemDialog
@@ -940,6 +1427,16 @@ export default function CharacterSheet({
       />
 
       <AddFeatDialog open={isAddFeatOpen} onOpenChange={setIsAddFeatOpen} onAdd={addFeat} chatMessages={chatMessages} />
+
+      <AddSpellDialog
+        open={isAddSpellOpen}
+        onOpenChange={(open) => {
+          setIsAddSpellOpen(open)
+          if (!open) setEditingSpell(null)
+        }}
+        onAdd={addSpell}
+        editingSpell={editingSpell}
+      />
     </div>
   )
 }
