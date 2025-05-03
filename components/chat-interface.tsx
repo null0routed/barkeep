@@ -22,7 +22,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
-import CampaignSummaryComponent from "./campaign-summary"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -65,6 +64,7 @@ export default function ChatInterface({
   const [isUpdatingSummary, setIsUpdatingSummary] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
+  const [headerSummary, setHeaderSummary] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
@@ -77,10 +77,9 @@ export default function ChatInterface({
       const containerTop = containerRect.top
       const footerHeight = 56 // Height of the input area
       const headerHeight = 40 // Approximate height of the chat header
-      const summaryHeight = 40 // Approximate height of the campaign summary header
       const padding = 24 // Some padding
 
-      const newHeight = windowHeight - containerTop - footerHeight - headerHeight - summaryHeight - padding
+      const newHeight = windowHeight - containerTop - footerHeight - headerHeight - padding
       setChatHeight(Math.max(400, newHeight)) // Minimum height of 400px
     }
   }
@@ -96,9 +95,79 @@ export default function ChatInterface({
     scrollToBottom()
   }, [messages])
 
+  // Update header summary when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      updateHeaderSummary(messages)
+    }
+  }, [messages])
+
   const scrollToBottom = () => {
     if (chatContentRef.current) {
       chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight
+    }
+  }
+
+  const updateHeaderSummary = async (messageHistory: ChatMessage[]) => {
+    if (!apiKey || !apiUrl || messageHistory.length < 3) {
+      // Don't update if there are too few messages
+      return
+    }
+
+    setIsUpdatingSummary(true)
+
+    try {
+      // Get the most recent messages for context
+      const recentMessages = messageHistory.slice(-10)
+
+      // Create a prompt to update the header summary
+      const updatePrompt = `
+        Based on the following conversation between a player and a DM, please create a concise summary (max 150 words) 
+        that captures the key context of the conversation so far. This summary will be used as context for future messages.
+        
+        CONVERSATION:
+        ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
+        
+        Please provide a concise summary that captures the essential context needed to continue this conversation.
+      `
+
+      // Call the API to generate updated summary
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: "You are a helpful assistant that summarizes D&D campaign conversations." },
+            { role: "user", content: updatePrompt },
+          ],
+          max_tokens: 300,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const content = data.choices[0].message.content.trim()
+
+      // Update the header summary
+      setHeaderSummary(content)
+
+      // Also update the campaign summary for compatibility
+      setCampaignSummary({
+        ...campaignSummary,
+        conversationSummary: content,
+        lastUpdated: new Date().toLocaleString(),
+      })
+    } catch (error) {
+      console.error("Error updating header summary:", error)
+    } finally {
+      setIsUpdatingSummary(false)
     }
   }
 
@@ -118,40 +187,22 @@ export default function ChatInterface({
 
     try {
       // Get the most recent messages, limited by maxMessages
-      let recentMessages = messages.slice(-maxMessages)
+      const recentMessages = messages.slice(-maxMessages)
       console.log(
         `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
       )
 
-      // If we're at the message limit, include the campaign summary as the first message
-      if (messages.length >= maxMessages) {
-        const summaryContent = formatCampaignSummaryForContext()
-        if (summaryContent.trim()) {
-          // Add the summary as a system message at the beginning
-          recentMessages = [
-            {
-              id: "summary",
-              role: "system",
-              content: summaryContent,
-            },
-            ...recentMessages,
-          ]
-        }
+      // Prepare the system message with the header summary
+      const systemMessage = {
+        role: "system",
+        content: `${systemPrompt}\n\n${
+          headerSummary ? `CONVERSATION CONTEXT:\n${headerSummary}\n\n` : ""
+        }Please keep this context in mind when responding.`,
       }
 
-      // Prepare the messages for the API with campaign summary
+      // Prepare the messages for the API
       const apiMessages = [
-        {
-          role: "system",
-          content:
-            `${systemPrompt}\n\n` +
-            `CAMPAIGN SUMMARY:\n` +
-            `Recent Events: ${campaignSummary.conversationSummary || "This is a new conversation."}\n\n` +
-            `Plot Points: ${campaignSummary.plotPoints || "None"}\n` +
-            `NPCs: ${campaignSummary.npcs || "None"}\n` +
-            `Locations: ${campaignSummary.locations || "None"}\n` +
-            `Quests: ${campaignSummary.quests || "None"}`,
-        },
+        systemMessage,
         ...recentMessages.map((msg) => ({ role: msg.role, content: msg.content })),
         { role: "user", content: input },
       ]
@@ -184,8 +235,8 @@ export default function ChatInterface({
       }
       setMessages((prev) => [...prev, assistantMessage])
 
-      // Update the campaign summary after receiving a response
-      await updateCampaignSummary([...messages, userMessage, assistantMessage])
+      // Update the header summary after receiving a response
+      // This will happen automatically via the useEffect
     } catch (error) {
       console.error("Error calling API:", error)
       // Add error message
@@ -200,113 +251,9 @@ export default function ChatInterface({
     }
   }
 
-  const formatCampaignSummaryForContext = () => {
-    return `CAMPAIGN SUMMARY:
-Recent Events: ${campaignSummary.conversationSummary || "This is a new conversation."}
-
-Plot Points: ${campaignSummary.plotPoints || "None"}
-NPCs: ${campaignSummary.npcs || "None"}
-Locations: ${campaignSummary.locations || "None"}
-Quests: ${campaignSummary.quests || "None"}
-
-Please keep this context in mind when responding.`
-  }
-
-  const updateCampaignSummary = async (messageHistory: ChatMessage[]) => {
-    if (!apiKey || !apiUrl) return
-
-    setIsUpdatingSummary(true)
-
-    try {
-      // Get the most recent messages for context
-      const recentMessages = messageHistory.slice(-15)
-
-      // Create a prompt to update the campaign summary
-      const updatePrompt = `
-        Based on the following conversation between a player and a DM, please update the campaign summary.
-        Extract key information and provide concise updates for each section.
-        
-        CONVERSATION:
-        ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
-        
-        CURRENT CAMPAIGN SUMMARY:
-        Conversation Summary: ${campaignSummary.conversationSummary || "This is a new conversation."}
-        Plot Points: ${campaignSummary.plotPoints || "None"}
-        NPCs: ${campaignSummary.npcs || "None"}
-        Locations: ${campaignSummary.locations || "None"}
-        Quests: ${campaignSummary.quests || "None"}
-        
-        Please provide an updated campaign summary in the following format:
-        
-        CONVERSATION SUMMARY:
-        [A concise summary (max 200 words) of the recent conversation and key developments]
-        
-        PLOT POINTS:
-        [Updated plot points]
-        
-        NPCS:
-        [Updated NPCs with brief descriptions]
-        
-        LOCATIONS:
-        [Updated locations with brief descriptions]
-        
-        QUESTS:
-        [Updated active and completed quests]
-      `
-
-      // Call the API to generate updated summary
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: "system", content: "You are a helpful assistant that organizes D&D campaign information." },
-            { role: "user", content: updatePrompt },
-          ],
-          max_tokens: 1000,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      const content = data.choices[0].message.content.trim()
-
-      // Parse the response to extract the updated summary
-      const conversationMatch = content.match(/CONVERSATION SUMMARY:\s*([\s\S]*?)(?=\s*PLOT POINTS:|$)/i)
-      const plotPointsMatch = content.match(/PLOT POINTS:\s*([\s\S]*?)(?=\s*NPCS:|$)/i)
-      const npcsMatch = content.match(/NPCS:\s*([\s\S]*?)(?=\s*LOCATIONS:|$)/i)
-      const locationsMatch = content.match(/LOCATIONS:\s*([\s\S]*?)(?=\s*QUESTS:|$)/i)
-      const questsMatch = content.match(/QUESTS:\s*([\s\S]*?)(?=$)/i)
-
-      // Update the campaign summary
-      setCampaignSummary({
-        conversationSummary: conversationMatch ? conversationMatch[1].trim() : campaignSummary.conversationSummary,
-        plotPoints: plotPointsMatch ? plotPointsMatch[1].trim() : campaignSummary.plotPoints,
-        npcs: npcsMatch ? npcsMatch[1].trim() : campaignSummary.npcs,
-        locations: locationsMatch ? locationsMatch[1].trim() : campaignSummary.locations,
-        quests: questsMatch ? questsMatch[1].trim() : campaignSummary.quests,
-        lastUpdated: new Date().toLocaleString(),
-      })
-    } catch (error) {
-      console.error("Error updating campaign summary:", error)
-    } finally {
-      setIsUpdatingSummary(false)
-    }
-  }
-
-  const handleGenerateUpdate = async () => {
-    await updateCampaignSummary(messages)
-  }
-
   const handleClearChat = () => {
     setMessages([])
+    setHeaderSummary("")
     setIsAlertOpen(false)
   }
 
@@ -399,18 +346,25 @@ Please keep this context in mind when responding.`
                     rows={5}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="header-summary">Current Header Summary</Label>
+                  <Textarea
+                    id="header-summary"
+                    value={headerSummary}
+                    onChange={(e) => setHeaderSummary(e.target.value)}
+                    placeholder="No summary generated yet. This will update automatically as you chat."
+                    rows={3}
+                    className="text-muted-foreground text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This summary is automatically generated and included with each message to provide context.
+                  </p>
+                </div>
               </div>
             </SheetContent>
           </Sheet>
         </div>
       </div>
-
-      <CampaignSummaryComponent
-        summary={campaignSummary}
-        onUpdate={setCampaignSummary}
-        onGenerateUpdate={handleGenerateUpdate}
-        isUpdating={isUpdatingSummary}
-      />
 
       <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
         <CardContent
