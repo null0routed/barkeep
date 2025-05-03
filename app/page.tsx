@@ -149,7 +149,7 @@ export default function Home() {
         <div className="flex items-center gap-2">
           <img
             src={BarkeepLogo.src}
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8"
           />
           <h1 className="text-2xl font-bold">Barkeep</h1>
         </div>
