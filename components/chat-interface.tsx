@@ -37,6 +37,8 @@ interface ChatInterfaceProps {
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
   campaignSummary: CampaignSummary
   setCampaignSummary: React.Dispatch<React.SetStateAction<CampaignSummary>>
+  maxMessages: number
+  setMaxMessages: React.Dispatch<React.SetStateAction<number>>
 }
 
 // Maximum number of previous messages to include in the context
@@ -55,26 +57,30 @@ export default function ChatInterface({
   setSystemPrompt,
   campaignSummary,
   setCampaignSummary,
+  maxMessages,
+  setMaxMessages,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isUpdatingSummary, setIsUpdatingSummary] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
-  const [maxMessages, setMaxMessages] = useState(MAX_PREVIOUS_MESSAGES)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const chatContentRef = useRef<HTMLDivElement>(null)
 
   // Calculate and set the chat height based on window size
   const updateChatHeight = () => {
     if (containerRef.current) {
       const windowHeight = window.innerHeight
-      const containerTop = containerRef.current.getBoundingClientRect().top
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const containerTop = containerRect.top
       const footerHeight = 56 // Height of the input area
       const headerHeight = 40 // Approximate height of the chat header
+      const summaryHeight = 40 // Approximate height of the campaign summary header
       const padding = 24 // Some padding
 
-      const newHeight = windowHeight - containerTop - footerHeight - headerHeight - padding
+      const newHeight = windowHeight - containerTop - footerHeight - headerHeight - summaryHeight - padding
       setChatHeight(Math.max(400, newHeight)) // Minimum height of 400px
     }
   }
@@ -91,7 +97,9 @@ export default function ChatInterface({
   }, [messages])
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (chatContentRef.current) {
+      chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,7 +118,26 @@ export default function ChatInterface({
 
     try {
       // Get the most recent messages, limited by maxMessages
-      const recentMessages = messages.slice(-maxMessages)
+      let recentMessages = messages.slice(-maxMessages)
+      console.log(
+        `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
+      )
+
+      // If we're at the message limit, include the campaign summary as the first message
+      if (messages.length >= maxMessages) {
+        const summaryContent = formatCampaignSummaryForContext()
+        if (summaryContent.trim()) {
+          // Add the summary as a system message at the beginning
+          recentMessages = [
+            {
+              id: "summary",
+              role: "system",
+              content: summaryContent,
+            },
+            ...recentMessages,
+          ]
+        }
+      }
 
       // Prepare the messages for the API with campaign summary
       const apiMessages = [
@@ -171,6 +198,18 @@ export default function ChatInterface({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const formatCampaignSummaryForContext = () => {
+    return `CAMPAIGN SUMMARY:
+Recent Events: ${campaignSummary.conversationSummary || "This is a new conversation."}
+
+Plot Points: ${campaignSummary.plotPoints || "None"}
+NPCs: ${campaignSummary.npcs || "None"}
+Locations: ${campaignSummary.locations || "None"}
+Quests: ${campaignSummary.quests || "None"}
+
+Please keep this context in mind when responding.`
   }
 
   const updateCampaignSummary = async (messageHistory: ChatMessage[]) => {
@@ -374,7 +413,11 @@ export default function ChatInterface({
       />
 
       <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
-        <CardContent className="flex-1 overflow-y-auto p-4" style={{ height: `calc(${chatHeight}px - 56px)` }}>
+        <CardContent
+          className="flex-1 overflow-y-auto p-4"
+          style={{ height: `calc(${chatHeight}px - 56px)` }}
+          ref={chatContentRef}
+        >
           <div className="space-y-4">
             {messages.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">

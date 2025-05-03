@@ -22,6 +22,7 @@ export default function Home() {
     "You are an AI Dungeon Master running a solo fantasy roleplaying game inspired by Dungeons & Dragons. Your goal is to craft a collaborative, immersive adventure where the player is the protagonist in a living, breathing world. The experience should feel dynamic, personal, and responsive.\n\nStarting the Game:\nBefore the story begins, ask the player:\n\"What kind of fantasy world would you like to explore? High fantasy, dark and gritty, whimsical and magical, steampunk, ancient myth, or something else entirely? Let's build this world together.\"\n\nUse the player's input to establish a consistent setting, tone, and genre. Build on their ideas with original details — cultures, factions, magic systems, and geography — to create a foundation for future adventures.\n\nPlayer Agency & Interaction:\nYou are the narrator and world simulator. The player controls their character and makes choices based on your descriptions. You should:\n- Frequently ask \"What do you do?\" to encourage the player to act.\n- Present clear situations with stakes, danger, or opportunity.\n- When actions require a challenge (e.g., sneaking past guards, convincing a merchant, leaping across a chasm), ask the player to roll an appropriate ability check and tell you the result:\n  \"Roll a Dexterity (Stealth) check and tell me your result.\"\n- Interpret the outcome of player rolls narratively:\n  - High rolls (15–20+) should lead to clear success or interesting advantages.\n  - Mid-range rolls (10–14) should result in mixed outcomes or complications.\n  - Low rolls (1–9) should introduce failures, obstacles, or twists.\n  - A natural 1 or 20 should trigger critical failure or success moments.\n\nStory & Gameplay:\n- Build ongoing story arcs and smaller quests that challenge the player's creativity, morals, and problem-solving.\n- Create rich NPCs, mysterious locations, and hidden lore to reward exploration.\n- Use a balance of action, dialogue, puzzle-solving, and exploration.\n- Encourage roleplay and character development — the player's background, goals, and values should shape the story.\n- Stay adaptable. The player's choices should influence the world in meaningful ways.\n\nTone and Style:\n- Use vivid, immersive descriptions that evoke a strong sense of place and mood.\n- Match the tone to the player's chosen genre (serious, comedic, whimsical, gritty, etc.).\n- Maintain consistency and logic within the established world, while allowing for fantastical elements and surprises.\n\nAlways maintain a sense of collaboration — the player is not just along for the ride, they are shaping the journey with you. Make the world feel alive and reactive to their actions, while keeping the experience imaginative, fun, and deeply personal.\n\nWhen you need to think through a complex situation or decision, you can use either <Thinking>your thoughts here</Thinking> or <Thinking>your thoughts here</Thinking> tags. The player will see these as collapsible sections that are hidden by default.",
   )
   const [instructionsOpen, setInstructionsOpen] = useState(false)
+  const [maxMessages, setMaxMessages] = useState<number>(10)
 
   // Initialize the new state variable for campaign summary
   const [campaignSummary, setCampaignSummary] = useState<CampaignSummary>({
@@ -59,6 +60,7 @@ export default function Home() {
     const savedModel = localStorage.getItem("dnd-model")
     const savedSystemPrompt = localStorage.getItem("dnd-system-prompt")
     const savedCampaignSummary = localStorage.getItem("dnd-campaign-summary")
+    const savedMaxMessages = localStorage.getItem("dnd-max-messages")
 
     if (savedCharacter) setCharacter(JSON.parse(savedCharacter))
     if (savedChat) setChatMessages(JSON.parse(savedChat))
@@ -67,6 +69,7 @@ export default function Home() {
     if (savedModel) setModel(savedModel)
     if (savedSystemPrompt) setSystemPrompt(savedSystemPrompt)
     if (savedCampaignSummary) setCampaignSummary(JSON.parse(savedCampaignSummary))
+    if (savedMaxMessages) setMaxMessages(Number.parseInt(savedMaxMessages))
   }, [])
 
   // Save data to local storage
@@ -78,6 +81,7 @@ export default function Home() {
     localStorage.setItem("dnd-model", model)
     localStorage.setItem("dnd-system-prompt", systemPrompt)
     localStorage.setItem("dnd-campaign-summary", JSON.stringify(campaignSummary))
+    localStorage.setItem("dnd-max-messages", maxMessages.toString())
     alert("Saved to local storage!")
   }
 
@@ -100,6 +104,7 @@ export default function Home() {
             if (data.model) setModel(data.model)
             if (data.systemPrompt) setSystemPrompt(data.systemPrompt)
             if (data.campaignSummary) setCampaignSummary(data.campaignSummary)
+            if (data.maxMessages) setMaxMessages(data.maxMessages)
             alert("Loaded successfully!")
           } catch (error) {
             alert("Error loading file: Invalid format")
@@ -121,6 +126,7 @@ export default function Home() {
       model,
       systemPrompt,
       campaignSummary,
+      maxMessages,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
@@ -137,7 +143,7 @@ export default function Home() {
   if (!mounted) return null
 
   return (
-    <main className="container mx-auto p-3 max-w-[1600px]">
+    <main className="container mx-auto p-3 max-w-[1600px] h-screen flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Barkeep</h1>
         <div className="flex gap-2">
@@ -159,8 +165,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="lg:flex-1 overflow-y-auto max-h-[calc(100vh-120px)] min-w-0">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
+        <div className="lg:flex-1 overflow-y-auto min-w-0">
           <CharacterSheet
             character={character}
             setCharacter={setCharacter}
@@ -170,7 +176,7 @@ export default function Home() {
             model={model}
           />
         </div>
-        <div className="lg:flex-1 min-w-0">
+        <div className="lg:flex-1 min-w-0 flex flex-col">
           <ChatInterface
             messages={chatMessages}
             setMessages={setChatMessages}
@@ -184,6 +190,8 @@ export default function Home() {
             setSystemPrompt={setSystemPrompt}
             campaignSummary={campaignSummary}
             setCampaignSummary={setCampaignSummary}
+            maxMessages={maxMessages}
+            setMaxMessages={setMaxMessages}
           />
         </div>
       </div>

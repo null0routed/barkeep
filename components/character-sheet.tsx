@@ -511,7 +511,7 @@ export default function CharacterSheet({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
           <CardTitle className="text-base">Basic Information</CardTitle>
@@ -1361,13 +1361,14 @@ export default function CharacterSheet({
                               <div className="mt-2 text-sm">
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
                                   <div>
-                                    <span className="font-medium">Range:</span> {spell.range}
+                                    <span className="font-medium">Casting Time:</span> {spell.castingTime || "1 action"}
                                   </div>
-                                  {spell.target && (
-                                    <div>
-                                      <span className="font-medium">Target:</span> {spell.target}
-                                    </div>
-                                  )}
+                                  <div>
+                                    <span className="font-medium">Range:</span> {spell.range || "Self"}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Duration:</span> {spell.duration || "Instantaneous"}
+                                  </div>
                                   <div>
                                     <span className="font-medium">Components:</span>{" "}
                                     {[spell.verbal ? "V" : "", spell.somatic ? "S" : "", spell.material ? "M" : ""]

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,23 +17,35 @@ interface AddSpellDialogProps {
   editingSpell?: Spell | null
 }
 
+const defaultSpell: Spell = {
+  id: "",
+  name: "",
+  description: "",
+  level: 0,
+  school: "evocation",
+  range: "",
+  duration: "",
+  castingTime: "",
+  verbal: false,
+  somatic: false,
+  material: false,
+  materialComponents: "",
+  prepared: false,
+}
+
 export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell }: AddSpellDialogProps) {
-  const [spell, setSpell] = useState<Spell>(
-    editingSpell || {
-      id: "",
-      name: "",
-      description: "",
-      level: 0,
-      school: "evocation",
-      range: "",
-      target: "",
-      verbal: false,
-      somatic: false,
-      material: false,
-      materialComponents: "",
-      prepared: false,
-    },
-  )
+  const [spell, setSpell] = useState<Spell>(defaultSpell)
+
+  // Reset form when dialog opens/closes or when editingSpell changes
+  useEffect(() => {
+    if (open) {
+      if (editingSpell) {
+        setSpell(editingSpell)
+      } else {
+        setSpell(defaultSpell)
+      }
+    }
+  }, [open, editingSpell])
 
   const handleAdd = () => {
     if (!spell.name.trim()) return
@@ -45,6 +57,7 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
     onAdd(newSpell)
     onOpenChange(false)
+    // Form will be reset on next open due to the useEffect
   }
 
   return (
@@ -114,6 +127,16 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
+              <Label htmlFor="castingTime">Casting Time</Label>
+              <Input
+                id="castingTime"
+                value={spell.castingTime}
+                onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })}
+                placeholder="e.g., 1 action, 1 minute"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="range">Range</Label>
               <Input
                 id="range"
@@ -122,16 +145,16 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
                 placeholder="e.g., 60 feet, Self, Touch"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="target">Target</Label>
-              <Input
-                id="target"
-                value={spell.target}
-                onChange={(e) => setSpell({ ...spell, target: e.target.value })}
-                placeholder="e.g., One creature, 20-foot radius"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="duration">Duration</Label>
+            <Input
+              id="duration"
+              value={spell.duration}
+              onChange={(e) => setSpell({ ...spell, duration: e.target.value })}
+              placeholder="e.g., Instantaneous, 1 hour, Concentration (up to 10 minutes)"
+            />
           </div>
 
           <div className="space-y-2">

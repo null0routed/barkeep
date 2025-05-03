@@ -25,25 +25,70 @@ export interface CharacterData {
     wisdom: boolean
     charisma: boolean
   }
-  spellSlots: {
-    cantrips: { known: number }
-    level1: { total: number; used: boolean[]; known: number }
-    level2: { total: number; used: boolean[]; known: number }
-    level3: { total: number; used: boolean[]; known: number }
-    level4: { total: number; used: boolean[]; known: number }
-    level5: { total: number; used: boolean[]; known: number }
-    level6: { total: number; used: boolean[]; known: number }
-    level7: { total: number; used: boolean[]; known: number }
-    level8: { total: number; used: boolean[]; known: number }
-    level9: { total: number; used: boolean[]; known: number }
-  }
+  skills: Skill[]
   inventory: InventoryItem[]
   equipment: Equipment[]
   proficiencies: Proficiency[]
-  skills: Skill[]
   traits: Trait[]
   feats: Feat[]
   spells: Spell[]
+  spellSlots: {
+    cantrips: {
+      known: number
+    }
+    level1: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level2: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level3: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level4: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level5: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level6: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level7: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level8: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+    level9: {
+      total: number
+      used: boolean[]
+      known: number
+    }
+  }
+}
+
+export interface Skill {
+  name: string
+  ability: keyof CharacterData["stats"]
+  proficient: boolean
+  expertise: boolean
 }
 
 export interface InventoryItem {
@@ -60,17 +105,12 @@ export interface Equipment {
   rarity: ItemRarity
 }
 
+export type ItemRarity = "common" | "uncommon" | "rare" | "very rare" | "legendary" | "artifact" | "unknown"
+
 export interface Proficiency {
   id: string
   name: string
   type: "armor" | "weapon" | "tool" | "language" | "other"
-}
-
-export interface Skill {
-  name: string
-  ability: "strength" | "dexterity" | "constitution" | "intelligence" | "wisdom" | "charisma"
-  proficient: boolean
-  expertise: boolean
 }
 
 export interface Trait {
@@ -86,21 +126,6 @@ export interface Feat {
   description: string
 }
 
-export interface Spell {
-  id: string
-  name: string
-  description: string
-  level: number
-  school: SpellSchool
-  range: string
-  target: string
-  verbal: boolean
-  somatic: boolean
-  material: boolean
-  materialComponents: string
-  prepared?: boolean
-}
-
 export type SpellSchool =
   | "abjuration"
   | "conjuration"
@@ -111,15 +136,26 @@ export type SpellSchool =
   | "necromancy"
   | "transmutation"
 
-export interface ChatMessage {
+export interface Spell {
   id: string
-  role: "user" | "assistant"
-  content: string
+  name: string
+  description: string
+  level: number
+  school: SpellSchool
+  range: string
+  duration: string
+  castingTime: string
+  verbal: boolean
+  somatic: boolean
+  material: boolean
+  materialComponents: string
+  prepared: boolean
 }
 
-export interface ConversationSummary {
-  summary: string
-  lastUpdated: string
+export interface ChatMessage {
+  id: string
+  role: "user" | "assistant" | "system"
+  content: string
 }
 
 export interface CampaignSummary {
@@ -128,15 +164,15 @@ export interface CampaignSummary {
   npcs: string
   locations: string
   quests: string
-  lastUpdated: string
+  lastUpdated?: string
 }
-
-export type ItemRarity = "common" | "uncommon" | "rare" | "very rare" | "legendary" | "artifact" | "unknown"
 
 export interface CampaignNotes {
   plotPoints: string
   npcs: string
   locations: string
   quests: string
-  lastUpdated: string
+  lastUpdated?: string
 }
+
+export { ConversationSummary }
