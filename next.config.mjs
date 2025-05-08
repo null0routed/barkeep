@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",
+  output: 'export',
+  images: {
+    unoptimized: true, // Required for static export
+  },
+  // Ensure trailing slashes for better compatibility with static hosting
+  trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
-  },
-  images: {
-    unoptimized: false,
   },
 }
 
