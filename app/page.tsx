@@ -198,6 +198,7 @@ export default function Home() {
             setCampaignSummary={setCampaignSummary}
             maxMessages={maxMessages}
             setMaxMessages={setMaxMessages}
+            character={character} // Pass character data to ChatInterface
           />
         </div>
       </div>

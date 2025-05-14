@@ -2,14 +2,14 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback, memo } from "react"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import type { ChatMessage, CampaignSummary } from "@/lib/types"
-import { SendIcon, SettingsIcon, TrashIcon } from "lucide-react"
+import type { ChatMessage, CampaignSummary, CharacterData } from "@/lib/types"
+import { SendIcon, SettingsIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   AlertDialog,
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
+import { formatCharacterData } from "@/lib/format-character-data"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -38,10 +39,124 @@ interface ChatInterfaceProps {
   setCampaignSummary: React.Dispatch<React.SetStateAction<CampaignSummary>>
   maxMessages: number
   setMaxMessages: React.Dispatch<React.SetStateAction<number>>
+  character: CharacterData
 }
 
 // Maximum number of previous messages to include in the context
 const MAX_PREVIOUS_MESSAGES = 6
+
+// Memoized message component to prevent re-rendering all messages when typing
+const ChatMessageComponent = memo(
+  ({
+    message,
+    onDelete,
+    onRegenerate,
+    isRegenerating,
+  }: {
+    message: ChatMessage
+    onDelete: (id: string) => void
+    onRegenerate?: (id: string) => void
+    isRegenerating?: boolean
+  }) => {
+    const [showControls, setShowControls] = useState(false)
+
+    return (
+      <div
+        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} relative group`}
+        onMouseEnter={() => setShowControls(true)}
+        onMouseLeave={() => setShowControls(false)}
+      >
+        <div
+          className={`max-w-[85%] rounded-lg p-3 text-sm ${
+            message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+          }`}
+        >
+          {message.role === "assistant" ? <MarkdownRenderer content={message.content} /> : message.content}
+
+          {/* Message controls */}
+          {showControls && (
+            <div
+              className={`absolute ${
+                message.role === "user" ? "left-0 -translate-x-full" : "right-0 translate-x-full"
+              } top-0 flex gap-1 p-1`}
+            >
+              {message.role === "assistant" && onRegenerate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => onRegenerate(message.id)}
+                  disabled={isRegenerating}
+                  title="Regenerate response"
+                >
+                  <RefreshCwIcon className={`h-3 w-3 ${isRegenerating ? "animate-spin" : ""}`} />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => onDelete(message.id)}
+                title="Delete message"
+              >
+                <TrashIcon className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  },
+)
+
+ChatMessageComponent.displayName = "ChatMessage"
+
+// Memoized message list component
+const MessageList = memo(
+  ({
+    messages,
+    isLoading,
+    messagesEndRef,
+    onDeleteMessage,
+    onRegenerateMessage,
+    regeneratingId,
+  }: {
+    messages: ChatMessage[]
+    isLoading: boolean
+    messagesEndRef: React.RefObject<HTMLDivElement>
+    onDeleteMessage: (id: string) => void
+    onRegenerateMessage: (id: string) => void
+    regeneratingId: string | null
+  }) => {
+    return (
+      <div className="space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            No messages yet. Start a conversation with your AI assistant!
+          </div>
+        ) : (
+          messages.map((message) => (
+            <ChatMessageComponent
+              key={message.id}
+              message={message}
+              onDelete={onDeleteMessage}
+              onRegenerate={message.role === "assistant" ? onRegenerateMessage : undefined}
+              isRegenerating={regeneratingId === message.id}
+            />
+          ))
+        )}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-lg p-3 bg-muted animate-pulse text-sm">Thinking...</div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+    )
+  },
+)
+
+MessageList.displayName = "MessageList"
 
 export default function ChatInterface({
   messages,
@@ -58,6 +173,7 @@ export default function ChatInterface({
   setCampaignSummary,
   maxMessages,
   setMaxMessages,
+  character,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -65,12 +181,14 @@ export default function ChatInterface({
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
   const [headerSummary, setHeaderSummary] = useState("")
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Calculate and set the chat height based on window size
-  const updateChatHeight = () => {
+  const updateChatHeight = useCallback(() => {
     if (containerRef.current) {
       const windowHeight = window.innerHeight
       const containerRect = containerRef.current.getBoundingClientRect()
@@ -82,14 +200,14 @@ export default function ChatInterface({
       const newHeight = windowHeight - containerTop - footerHeight - headerHeight - padding
       setChatHeight(Math.max(400, newHeight)) // Minimum height of 400px
     }
-  }
+  }, [])
 
   // Update height on mount and window resize
   useEffect(() => {
     updateChatHeight()
     window.addEventListener("resize", updateChatHeight)
     return () => window.removeEventListener("resize", updateChatHeight)
-  }, [])
+  }, [updateChatHeight])
 
   useEffect(() => {
     scrollToBottom()
@@ -102,160 +220,321 @@ export default function ChatInterface({
     }
   }, [messages])
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (chatContentRef.current) {
       chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight
     }
+  }, [])
+
+  const updateHeaderSummary = useCallback(
+    async (messageHistory: ChatMessage[]) => {
+      if (!apiKey || !apiUrl || messageHistory.length < 3) {
+        // Don't update if there are too few messages
+        return
+      }
+
+      setIsUpdatingSummary(true)
+
+      try {
+        // Get the most recent messages for context
+        const recentMessages = messageHistory.slice(-10)
+
+        // Create a prompt to update the header summary
+        const updatePrompt = `
+          Based on the following conversation between a player and a DM, please create a concise summary (max 150 words) 
+          that captures the key context of the conversation so far. This summary will be used as context for future messages.
+          
+          CONVERSATION:
+          ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
+          
+          Please provide a concise summary that captures the essential context needed to continue this conversation.
+        `
+
+        // Call the API to generate updated summary
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: "system", content: "You are a helpful assistant that summarizes D&D campaign conversations." },
+              { role: "user", content: updatePrompt },
+            ],
+            max_tokens: 300,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        const content = data.choices[0].message.content.trim()
+
+        // Update the header summary
+        setHeaderSummary(content)
+
+        // Also update the campaign summary for compatibility
+        setCampaignSummary({
+          ...campaignSummary,
+          conversationSummary: content,
+          lastUpdated: new Date().toLocaleString(),
+        })
+      } catch (error) {
+        console.error("Error updating header summary:", error)
+      } finally {
+        setIsUpdatingSummary(false)
+      }
+    },
+    [apiKey, apiUrl, model, campaignSummary, setCampaignSummary],
+  )
+
+  // Define the character sheet tool
+  const characterSheetTool = {
+    type: "function",
+    function: {
+      name: "getCharacterSheet",
+      description: "Get the player's character sheet information",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
   }
 
-  const updateHeaderSummary = async (messageHistory: ChatMessage[]) => {
-    if (!apiKey || !apiUrl || messageHistory.length < 3) {
-      // Don't update if there are too few messages
-      return
-    }
+  // Function to handle the character sheet tool call
+  const handleToolCalls = useCallback(
+    (toolCalls: any[]) => {
+      const results = []
 
-    setIsUpdatingSummary(true)
-
-    try {
-      // Get the most recent messages for context
-      const recentMessages = messageHistory.slice(-10)
-
-      // Create a prompt to update the header summary
-      const updatePrompt = `
-        Based on the following conversation between a player and a DM, please create a concise summary (max 150 words) 
-        that captures the key context of the conversation so far. This summary will be used as context for future messages.
-        
-        CONVERSATION:
-        ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
-        
-        Please provide a concise summary that captures the essential context needed to continue this conversation.
-      `
-
-      // Call the API to generate updated summary
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: "system", content: "You are a helpful assistant that summarizes D&D campaign conversations." },
-            { role: "user", content: updatePrompt },
-          ],
-          max_tokens: 300,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
+      for (const toolCall of toolCalls) {
+        if (toolCall.function.name === "getCharacterSheet") {
+          // Format the character data
+          const formattedCharacterData = formatCharacterData(character)
+          results.push({
+            tool_call_id: toolCall.id,
+            role: "tool",
+            name: "getCharacterSheet",
+            content: formattedCharacterData,
+          })
+        }
       }
 
-      const data = await response.json()
-      const content = data.choices[0].message.content.trim()
+      return results
+    },
+    [character],
+  )
 
-      // Update the header summary
-      setHeaderSummary(content)
+  const callApi = useCallback(
+    async (userContent: string, contextMessages: ChatMessage[]) => {
+      try {
+        // Prepare the system message with the header summary and tool instructions
+        const toolInstructions = `
+You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
+Use this tool when you need to reference the character's stats, abilities, inventory, or other details.
+DO NOT mention that you're using this tool to the player - just incorporate the information naturally in your responses.
+`
 
-      // Also update the campaign summary for compatibility
-      setCampaignSummary({
-        ...campaignSummary,
-        conversationSummary: content,
-        lastUpdated: new Date().toLocaleString(),
-      })
-    } catch (error) {
-      console.error("Error updating header summary:", error)
-    } finally {
-      setIsUpdatingSummary(false)
-    }
-  }
+        const systemMessage = {
+          role: "system",
+          content: `${systemPrompt}\n\n${
+            headerSummary ? `CONVERSATION CONTEXT:\n${headerSummary}\n\n` : ""
+          }${toolInstructions}\nPlease keep this context in mind when responding.`,
+        }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+        // Prepare the messages for the API
+        const apiMessages = [
+          systemMessage,
+          ...contextMessages.map((msg) => ({ role: msg.role, content: msg.content })),
+          { role: "user", content: userContent },
+        ]
 
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: input,
-    }
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+        // Call the OpenAI-compatible API with tools
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: apiMessages,
+            tools: [characterSheetTool],
+            tool_choice: "auto",
+            stream: false,
+          }),
+        })
 
-    try {
-      // Get the most recent messages, limited by maxMessages
-      const recentMessages = messages.slice(-maxMessages)
-      console.log(
-        `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
-      )
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
+        }
 
-      // Prepare the system message with the header summary
-      const systemMessage = {
-        role: "system",
-        content: `${systemPrompt}\n\n${
-          headerSummary ? `CONVERSATION CONTEXT:\n${headerSummary}\n\n` : ""
-        }Please keep this context in mind when responding.`,
+        const data = await response.json()
+
+        // Check if the response contains tool calls
+        if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls.length > 0) {
+          // Handle tool calls
+          const toolResults = handleToolCalls(data.choices[0].message.tool_calls)
+
+          // Make a second API call with the tool results
+          const secondResponse = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [...apiMessages, data.choices[0].message, ...toolResults],
+              stream: false,
+            }),
+          })
+
+          if (!secondResponse.ok) {
+            throw new Error(`API error in second call: ${secondResponse.status}`)
+          }
+
+          const secondData = await secondResponse.json()
+          return secondData.choices[0].message.content
+        } else {
+          return data.choices[0].message.content
+        }
+      } catch (error) {
+        console.error("Error calling API:", error)
+        throw error
       }
+    },
+    [apiKey, apiUrl, model, systemPrompt, headerSummary, characterSheetTool, handleToolCalls],
+  )
 
-      // Prepare the messages for the API
-      const apiMessages = [
-        systemMessage,
-        ...recentMessages.map((msg) => ({ role: msg.role, content: msg.content })),
-        { role: "user", content: input },
-      ]
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      if (!input.trim()) return
 
-      // Call the OpenAI-compatible API
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: apiMessages,
-          stream: false,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Add assistant message
-      const assistantMessage: ChatMessage = {
+      // Add user message
+      const userMessage: ChatMessage = {
         id: Date.now().toString(),
-        role: "assistant",
-        content: data.choices[0].message.content,
+        role: "user",
+        content: input,
       }
-      setMessages((prev) => [...prev, assistantMessage])
+      setMessages((prev) => [...prev, userMessage])
+      setInput("")
+      setIsLoading(true)
 
-      // Update the header summary after receiving a response
-      // This will happen automatically via the useEffect
-    } catch (error) {
-      console.error("Error calling API:", error)
-      // Add error message
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: "Sorry, there was an error processing your request. Please check your API settings and try again.",
+      try {
+        // Get the most recent messages, limited by maxMessages
+        const recentMessages = messages.slice(-maxMessages)
+        console.log(
+          `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
+        )
+
+        const assistantContent = await callApi(input, recentMessages)
+
+        // Add assistant message
+        const assistantMessage: ChatMessage = {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: assistantContent,
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+
+        // Update the header summary after receiving a response
+        // This will happen automatically via the useEffect
+      } catch (error) {
+        console.error("Error calling API:", error)
+        // Add error message
+        const errorMessage: ChatMessage = {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: "Sorry, there was an error processing your request. Please check your API settings and try again.",
+        }
+        setMessages((prev) => [...prev, errorMessage])
+      } finally {
+        setIsLoading(false)
+        // Focus the input field after sending a message
+        if (inputRef.current) {
+          inputRef.current.focus()
+        }
       }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    },
+    [input, messages, maxMessages, setMessages, callApi],
+  )
 
-  const handleClearChat = () => {
+  const handleDeleteMessage = useCallback(
+    (id: string) => {
+      setMessages((prev) => {
+        // Find the index of the message to delete
+        const index = prev.findIndex((msg) => msg.id === id)
+        if (index === -1) return prev
+
+        // Create a new array without the deleted message
+        const newMessages = [...prev]
+        newMessages.splice(index, 1)
+        return newMessages
+      })
+    },
+    [setMessages],
+  )
+
+  const handleRegenerateMessage = useCallback(
+    async (id: string) => {
+      // Find the assistant message to regenerate
+      const assistantIndex = messages.findIndex((msg) => msg.id === id)
+      if (assistantIndex === -1 || messages[assistantIndex].role !== "assistant") return
+
+      // Find the user message that prompted this response
+      let userIndex = assistantIndex - 1
+      while (userIndex >= 0) {
+        if (messages[userIndex].role === "user") break
+        userIndex--
+      }
+
+      if (userIndex < 0) return // No user message found
+
+      const userMessage = messages[userIndex]
+      setRegeneratingId(id)
+
+      try {
+        // Get context messages (messages before the user message)
+        const contextMessages = messages.slice(0, userIndex)
+
+        // Call the API with the user message and context
+        const newContent = await callApi(userMessage.content, contextMessages)
+
+        // Update the assistant message with the new content
+        setMessages((prev) => {
+          const updated = [...prev]
+          updated[assistantIndex] = {
+            ...updated[assistantIndex],
+            content: newContent,
+            id: Date.now().toString(), // Update ID to force re-render
+          }
+          return updated
+        })
+      } catch (error) {
+        console.error("Error regenerating message:", error)
+      } finally {
+        setRegeneratingId(null)
+      }
+    },
+    [messages, callApi, setMessages],
+  )
+
+  const handleClearChat = useCallback(() => {
     setMessages([])
     setHeaderSummary("")
     setIsAlertOpen(false)
-  }
+  }, [setMessages])
+
+  // Memoized input change handler to prevent re-renders
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value)
+  }, [])
 
   return (
     <div className="flex flex-col h-full" ref={containerRef}>
@@ -372,42 +651,26 @@ export default function ChatInterface({
           style={{ height: `calc(${chatHeight}px - 56px)` }}
           ref={chatContentRef}
         >
-          <div className="space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No messages yet. Start a conversation with your AI assistant!
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-lg p-3 text-sm ${
-                      message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}
-                  >
-                    {message.role === "assistant" ? <MarkdownRenderer content={message.content} /> : message.content}
-                  </div>
-                </div>
-              ))
-            )}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-lg p-3 bg-muted animate-pulse text-sm">Thinking...</div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+          <MessageList
+            messages={messages}
+            isLoading={isLoading}
+            messagesEndRef={messagesEndRef}
+            onDeleteMessage={handleDeleteMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            regeneratingId={regeneratingId}
+          />
         </CardContent>
         <CardFooter className="border-t p-3 h-[56px]">
           <form onSubmit={handleSubmit} className="flex w-full gap-2">
             <Input
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               placeholder="Type your message..."
-              disabled={isLoading}
+              disabled={isLoading || regeneratingId !== null}
               className="flex-1 text-sm"
             />
-            <Button type="submit" disabled={isLoading || !input.trim()} size="sm">
+            <Button type="submit" disabled={isLoading || regeneratingId !== null || !input.trim()} size="sm">
               <SendIcon className="h-4 w-4 mr-1" /> Send
             </Button>
           </form>
