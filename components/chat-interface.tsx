@@ -67,24 +67,20 @@ const ChatMessageComponent = memo(
         onMouseLeave={() => setShowControls(false)}
       >
         <div
-          className={`max-w-[85%] rounded-lg p-3 text-sm ${
+          className={`max-w-[85%] rounded-lg p-3 text-sm relative ${
             message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
           }`}
         >
           {message.role === "assistant" ? <MarkdownRenderer content={message.content} /> : message.content}
 
-          {/* Message controls */}
+          {/* Message controls - now positioned inside the message bubble */}
           {showControls && (
-            <div
-              className={`absolute ${
-                message.role === "user" ? "left-0 -translate-x-full" : "right-0 translate-x-full"
-              } top-0 flex gap-1 p-1`}
-            >
+            <div className={`absolute top-2 ${message.role === "user" ? "left-2" : "right-2"} flex flex-col gap-1`}>
               {message.role === "assistant" && onRegenerate && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="h-6 w-6 bg-background/80 hover:bg-background"
                   onClick={() => onRegenerate(message.id)}
                   disabled={isRegenerating}
                   title="Regenerate response"
@@ -95,7 +91,7 @@ const ChatMessageComponent = memo(
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-destructive hover:text-destructive"
+                className="h-6 w-6 bg-background/80 hover:bg-background text-destructive hover:text-destructive"
                 onClick={() => onDelete(message.id)}
                 title="Delete message"
               >
