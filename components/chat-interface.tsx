@@ -122,7 +122,7 @@ const MessageList = memo(
   }: {
     messages: ChatMessage[]
     isLoading: boolean
-    messagesEndRef: React.RefObject<HTMLDivElement>
+    messagesEndRef: React.RefObject<HTMLDivElement | null>
     onDeleteMessage: (id: string) => void
     onRegenerateMessage: (id: string) => void
     regeneratingId: string | null

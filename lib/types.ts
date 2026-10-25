@@ -1,3 +1,37 @@
+export interface CantripSlots {
+  known: number
+}
+
+export interface SpellSlot {
+  total: number
+  used: boolean[]
+  known: number
+}
+
+export interface SpellSlots {
+  cantrips: CantripSlots
+  level1: SpellSlot
+  level2: SpellSlot
+  level3: SpellSlot
+  level4: SpellSlot
+  level5: SpellSlot
+  level6: SpellSlot
+  level7: SpellSlot
+  level8: SpellSlot
+  level9: SpellSlot
+}
+
+export type SpellSlotKey =
+  | "level1"
+  | "level2"
+  | "level3"
+  | "level4"
+  | "level5"
+  | "level6"
+  | "level7"
+  | "level8"
+  | "level9"
+
 export interface CharacterData {
   name: string
   class: string
@@ -32,56 +66,7 @@ export interface CharacterData {
   traits: Trait[]
   feats: Feat[]
   spells: Spell[]
-  spellSlots: {
-    cantrips: {
-      known: number
-    }
-    level1: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level2: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level3: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level4: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level5: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level6: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level7: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level8: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-    level9: {
-      total: number
-      used: boolean[]
-      known: number
-    }
-  }
+  spellSlots: SpellSlots
 }
 
 export interface Skill {
@@ -192,5 +177,3 @@ export interface CampaignCheckpoint {
   npcs?: string
   notes?: string
 }
-
-export { ConversationSummary }

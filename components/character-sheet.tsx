@@ -24,6 +24,7 @@ import type {
   ItemRarity,
   Spell,
   SpellSchool,
+  SpellSlotKey,
 } from "@/lib/types"
 import AddItemDialog from "./add-item-dialog"
 import AddProficiencyDialog from "./add-proficiency-dialog"
@@ -123,7 +124,7 @@ export default function CharacterSheet({
   }
 
   const handleSpellSlotTotalChange = (level: number, total: number) => {
-    const levelKey = `level${level}` as keyof typeof character.spellSlots
+    const levelKey = `level${level}` as SpellSlotKey
 
     setCharacter((prev) => {
       // Create a new array of used slots with the correct length
@@ -164,7 +165,7 @@ export default function CharacterSheet({
         },
       }))
     } else {
-      const levelKey = `level${level}` as keyof typeof character.spellSlots
+      const levelKey = `level${level}` as SpellSlotKey
       setCharacter((prev) => ({
         ...prev,
         spellSlots: {
@@ -179,7 +180,7 @@ export default function CharacterSheet({
   }
 
   const handleSpellSlotUseChange = (level: number, index: number, used: boolean) => {
-    const levelKey = `level${level}` as keyof typeof character.spellSlots
+    const levelKey = `level${level}` as SpellSlotKey
 
     setCharacter((prev) => {
       const newUsed = [...prev.spellSlots[levelKey].used]
@@ -792,7 +793,7 @@ export default function CharacterSheet({
 
               {/* Spell Levels 1-9 */}
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((level) => {
-                const levelKey = `level${level}` as keyof typeof character.spellSlots
+                const levelKey = `level${level}` as SpellSlotKey
                 const { total, used, known } = character.spellSlots[levelKey]
 
                 return (
@@ -1399,7 +1400,7 @@ export default function CharacterSheet({
       <AddItemDialog
         open={isAddInventoryOpen}
         onOpenChange={setIsAddInventoryOpen}
-        onAdd={addInventoryItem}
+        onAdd={(item) => addInventoryItem(item as InventoryItem)}
         type="inventory"
         chatMessages={chatMessages}
         apiUrl={apiUrl}
@@ -1410,7 +1411,7 @@ export default function CharacterSheet({
       <AddItemDialog
         open={isAddEquipmentOpen}
         onOpenChange={setIsAddEquipmentOpen}
-        onAdd={addEquipmentItem}
+        onAdd={(item) => addEquipmentItem(item as Equipment)}
         type="equipment"
         chatMessages={chatMessages}
         apiUrl={apiUrl}

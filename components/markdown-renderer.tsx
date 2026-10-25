@@ -143,7 +143,6 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
         ) : (
           <ReactMarkdown
             key={index}
-            className="prose prose-sm dark:prose-invert max-w-none"
             components={MarkdownComponents}
           >
             {block.content}

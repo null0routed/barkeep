@@ -1,4 +1,4 @@
-import type { CharacterData } from "./types"
+import type { CharacterData, SpellSlotKey } from "./types"
 
 /**
  * Formats character data into a concise, readable format for the AI
@@ -58,7 +58,7 @@ export function formatCharacterData(character: CharacterData): string {
   // Format spell slots
   const spellSlots = []
   for (let i = 1; i <= 9; i++) {
-    const levelKey = `level${i}` as keyof typeof character.spellSlots
+    const levelKey = `level${i}` as SpellSlotKey
     const { total, used } = character.spellSlots[levelKey]
     if (total > 0) {
       const usedCount = used.filter(Boolean).length
