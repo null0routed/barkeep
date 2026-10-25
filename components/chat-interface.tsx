@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import type { ChatMessage, CampaignSummary, CharacterData } from "@/lib/types"
+import type { ChatMessage, CampaignSummary, CampaignCheckpoint, CharacterData } from "@/lib/types"
 import { SendIcon, SettingsIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
 import { formatCharacterData } from "@/lib/format-character-data"
+import { campaignCheckpointTools, runCheckpointTool } from "@/lib/campaign-checkpoints"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -37,6 +38,8 @@ interface ChatInterfaceProps {
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
   campaignSummary: CampaignSummary
   setCampaignSummary: React.Dispatch<React.SetStateAction<CampaignSummary>>
+  campaignCheckpoints: CampaignCheckpoint[]
+  setCampaignCheckpoints: React.Dispatch<React.SetStateAction<CampaignCheckpoint[]>>
   maxMessages: number
   setMaxMessages: React.Dispatch<React.SetStateAction<number>>
   character: CharacterData
@@ -167,6 +170,8 @@ export default function ChatInterface({
   setSystemPrompt,
   campaignSummary,
   setCampaignSummary,
+  campaignCheckpoints,
+  setCampaignCheckpoints,
   maxMessages,
   setMaxMessages,
   character,
@@ -182,6 +187,13 @@ export default function ChatInterface({
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Mirror of the checkpoint list so tool calls always see the latest value, even when several
+  // tool calls run before React re-renders (a plain closure over the prop would be stale)
+  const checkpointsRef = useRef<CampaignCheckpoint[]>(campaignCheckpoints)
+  useEffect(() => {
+    checkpointsRef.current = campaignCheckpoints
+  }, [campaignCheckpoints])
 
   // Calculate and set the chat height based on window size
   const updateChatHeight = useCallback(() => {
@@ -302,13 +314,16 @@ export default function ChatInterface({
     },
   }
 
-  // Function to handle the character sheet tool call
+  // Function to handle tool calls (character sheet + campaign checkpoints)
   const handleToolCalls = useCallback(
     (toolCalls: any[]) => {
       const results = []
+      let workingCheckpoints = checkpointsRef.current
 
       for (const toolCall of toolCalls) {
-        if (toolCall.function.name === "getCharacterSheet") {
+        const toolName: string = toolCall.function.name
+
+        if (toolName === "getCharacterSheet") {
           // Format the character data
           const formattedCharacterData = formatCharacterData(character)
           results.push({
@@ -317,12 +332,39 @@ export default function ChatInterface({
             name: "getCharacterSheet",
             content: formattedCharacterData,
           })
+          continue
         }
+
+        // Checkpoint tools: saves persist to localStorage inside runCheckpointTool
+        const checkpointResult = runCheckpointTool(toolName, toolCall.function.arguments, workingCheckpoints)
+        if (checkpointResult) {
+          workingCheckpoints = checkpointResult.checkpoints
+          results.push({
+            tool_call_id: toolCall.id,
+            role: "tool",
+            name: toolName,
+            content: checkpointResult.content,
+          })
+          continue
+        }
+
+        // Every tool call needs a matching result or the API rejects the follow-up request
+        results.push({
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: toolName,
+          content: `Error: unknown tool "${toolName}".`,
+        })
+      }
+
+      if (workingCheckpoints !== checkpointsRef.current) {
+        checkpointsRef.current = workingCheckpoints
+        setCampaignCheckpoints(workingCheckpoints)
       }
 
       return results
     },
-    [character],
+    [character, setCampaignCheckpoints],
   )
 
   const callApi = useCallback(
@@ -333,6 +375,11 @@ export default function ChatInterface({
 You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
 Use this tool when you need to reference the character's stats, abilities, inventory, or other details.
 DO NOT mention that you're using this tool to the player - just incorporate the information naturally in your responses.
+
+You also have two tools for long-term campaign memory, because older chat messages eventually drop out of your context:
+- saveCampaignCheckpoint: call it at natural stopping points, such as the end of a scene, arrival at a new location, a major decision or revelation, a quest starting or finishing, or when the player says they are wrapping up. Record where the story stands and what you would need to pick it back up later. Do not save a checkpoint after every message.
+- getCampaignCheckpoints: call it when a conversation begins or resumes with little prior context, when the player asks for a recap or says they are continuing, or when you are unsure about earlier events.
+DO NOT mention these tools to the player - use them quietly and just continue the story.
 `
 
         const systemMessage = {
@@ -359,7 +406,7 @@ DO NOT mention that you're using this tool to the player - just incorporate the 
           body: JSON.stringify({
             model: model,
             messages: apiMessages,
-            tools: [characterSheetTool],
+            tools: [characterSheetTool, ...campaignCheckpointTools],
             tool_choice: "auto",
             stream: false,
           }),

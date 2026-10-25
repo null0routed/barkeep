@@ -175,4 +175,22 @@ export interface CampaignNotes {
   lastUpdated?: string
 }
 
+/**
+ * A point-in-time snapshot of the campaign's status, written by the AI through the
+ * saveCampaignCheckpoint tool and read back through getCampaignCheckpoints.
+ * Only title and summary are required so the shape stays usable for any game system.
+ */
+export interface CampaignCheckpoint {
+  id: string
+  /** ISO 8601 timestamp of when the checkpoint was saved */
+  createdAt: string
+  title: string
+  summary: string
+  currentLocation?: string
+  activeQuests?: string
+  plotPoints?: string
+  npcs?: string
+  notes?: string
+}
+
 export { ConversationSummary }

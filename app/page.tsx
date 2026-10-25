@@ -8,8 +8,9 @@ import CharacterSheet from "@/components/character-sheet"
 import ChatInterface from "@/components/chat-interface"
 import InstructionsModal from "@/components/instructions-modal"
 import { useTheme } from "next-themes"
-import type { CharacterData, ChatMessage, CampaignSummary } from "@/lib/types"
+import type { CharacterData, ChatMessage, CampaignSummary, CampaignCheckpoint } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
+import { loadCheckpoints, saveCheckpoints, sanitizeCheckpoints } from "@/lib/campaign-checkpoints"
 import PWAInstaller from "@/components/pwa-installer"
 
 export default function Home() {
@@ -35,6 +36,9 @@ export default function Home() {
     quests: "",
     lastUpdated: "",
   })
+
+  // Campaign status checkpoints written by the AI (persisted to localStorage by the tool itself)
+  const [campaignCheckpoints, setCampaignCheckpoints] = useState<CampaignCheckpoint[]>([])
 
   // Use useEffect to set mounted to true and check if first visit
   useEffect(() => {
@@ -72,6 +76,7 @@ export default function Home() {
     if (savedSystemPrompt) setSystemPrompt(savedSystemPrompt)
     if (savedCampaignSummary) setCampaignSummary(JSON.parse(savedCampaignSummary))
     if (savedMaxMessages) setMaxMessages(Number.parseInt(savedMaxMessages))
+    setCampaignCheckpoints(loadCheckpoints())
   }, [])
 
   // Save data to local storage
@@ -84,7 +89,12 @@ export default function Home() {
     localStorage.setItem("dnd-system-prompt", systemPrompt)
     localStorage.setItem("dnd-campaign-summary", JSON.stringify(campaignSummary))
     localStorage.setItem("dnd-max-messages", maxMessages.toString())
-    alert("Saved to local storage!")
+    const checkpointResult = saveCheckpoints(campaignCheckpoints)
+    alert(
+      checkpointResult.ok
+        ? "Saved to local storage!"
+        : `Saved to local storage, but campaign checkpoints could not be stored: ${checkpointResult.error}`,
+    )
   }
 
   // Load data from file
@@ -107,6 +117,8 @@ export default function Home() {
             if (data.systemPrompt) setSystemPrompt(data.systemPrompt)
             if (data.campaignSummary) setCampaignSummary(data.campaignSummary)
             if (data.maxMessages) setMaxMessages(data.maxMessages)
+            // Files exported before checkpoints existed have no such key; leave current checkpoints alone then
+            if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(sanitizeCheckpoints(data.campaignCheckpoints))
             alert("Loaded successfully!")
           } catch (error) {
             alert("Error loading file: Invalid format")
@@ -129,6 +141,7 @@ export default function Home() {
       systemPrompt,
       campaignSummary,
       maxMessages,
+      campaignCheckpoints,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
@@ -196,6 +209,8 @@ export default function Home() {
             setSystemPrompt={setSystemPrompt}
             campaignSummary={campaignSummary}
             setCampaignSummary={setCampaignSummary}
+            campaignCheckpoints={campaignCheckpoints}
+            setCampaignCheckpoints={setCampaignCheckpoints}
             maxMessages={maxMessages}
             setMaxMessages={setMaxMessages}
             character={character} // Pass character data to ChatInterface
