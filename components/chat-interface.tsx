@@ -24,6 +24,7 @@ import {
 import MarkdownRenderer from "./markdown-renderer"
 import { formatCharacterData } from "@/lib/format-character-data"
 import { campaignCheckpointTools, runCheckpointTool } from "@/lib/campaign-checkpoints"
+import { toast } from "sonner"
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -45,8 +46,13 @@ interface ChatInterfaceProps {
   character: CharacterData
 }
 
-// Maximum number of previous messages to include in the context
-const MAX_PREVIOUS_MESSAGES = 6
+// Default number of previous messages included in the model context (also the shared
+// initial state in app/page.tsx — was inconsistently 6 here vs 10 there)
+export const DEFAULT_MAX_MESSAGES = 10
+
+// Debounce window before the per-turn summary call fires, so a burst of back-to-back
+// turns costs one paid call instead of one per message
+const SUMMARY_DEBOUNCE_MS = 3000
 
 // Static tool definition (module scope keeps its identity stable across renders —
 // same pattern as campaignCheckpointTools in lib/campaign-checkpoints.ts)
@@ -210,6 +216,9 @@ export default function ChatInterface({
     checkpointsRef.current = campaignCheckpoints
   }, [campaignCheckpoints])
 
+  // In-flight mirror guarding the (expensive) per-turn summary call against concurrency
+  const summaryInFlightRef = useRef(false)
+
   // Calculate and set the chat height based on window size
   const updateChatHeight = useCallback(() => {
     if (containerRef.current) {
@@ -242,15 +251,17 @@ export default function ChatInterface({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // Update header summary when messages change.
+  // Update the header summary ~3s after messages have settled (debounced).
   // Intentionally NOT depending on updateHeaderSummary: that callback's identity changes
   // whenever campaignSummary updates (which happens on every successful summary fetch), so
   // adding it here would re-fire this effect -> an endless chain of paid API calls.
-  // Firing only on messages changes is the intended behavior.
+  // Firing only on messages changes (debounced) is the intended behavior.
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length === 0) return
+    const timer = setTimeout(() => {
       updateHeaderSummary(messages)
-    }
+    }, SUMMARY_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reason documented above
   }, [messages])
 
@@ -260,6 +271,9 @@ export default function ChatInterface({
         // Don't update if there are too few messages
         return
       }
+      // In-flight guard: a second concurrent call would race on setHeaderSummary
+      if (summaryInFlightRef.current) return
+      summaryInFlightRef.current = true
 
       setIsUpdatingSummary(true)
 
@@ -314,6 +328,7 @@ export default function ChatInterface({
       } catch (error) {
         console.error("Error updating header summary:", error)
       } finally {
+        summaryInFlightRef.current = false
         setIsUpdatingSummary(false)
       }
     },
@@ -467,7 +482,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
       // Add user message
       const userMessage: ChatMessage = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         role: "user",
         content: input,
       }
@@ -486,7 +501,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
         // Add assistant message
         const assistantMessage: ChatMessage = {
-          id: Date.now().toString(),
+          id: crypto.randomUUID(),
           role: "assistant",
           content: assistantContent,
         }
@@ -496,13 +511,11 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         // This will happen automatically via the useEffect
       } catch (error) {
         console.error("Error calling API:", error)
-        // Add error message
-        const errorMessage: ChatMessage = {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: "Sorry, there was an error processing your request. Please check your API settings and try again.",
-        }
-        setMessages((prev) => [...prev, errorMessage])
+        // Ephemeral notification only — never persist error text into history, where it
+        // would be replayed into model context on every subsequent request
+        toast.error(
+          "Sorry, there was an error processing your request. Please check your API settings and try again.",
+        )
       } finally {
         setIsLoading(false)
         // Focus the input field after sending a message
@@ -561,7 +574,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           updated[assistantIndex] = {
             ...updated[assistantIndex],
             content: newContent,
-            id: Date.now().toString(), // Update ID to force re-render
+            id: crypto.randomUUID(), // Update ID to force re-render
           }
           return updated
         })
@@ -655,7 +668,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                     type="number"
                     value={maxMessages}
                     onChange={(e) =>
-                      setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || MAX_PREVIOUS_MESSAGES))
+                      setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || DEFAULT_MAX_MESSAGES))
                     }
                     min={1}
                     max={20}

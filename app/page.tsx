@@ -1,17 +1,22 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon } from "lucide-react"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
-import ChatInterface from "@/components/chat-interface"
+import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
 import InstructionsModal from "@/components/instructions-modal"
 import { useTheme } from "next-themes"
 import type { CharacterData, ChatMessage, CampaignSummary, CampaignCheckpoint } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
+import { toast } from "sonner"
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/default-prompts"
 import { loadCheckpoints, saveCheckpoints, sanitizeCheckpoints } from "@/lib/campaign-checkpoints"
 import PWAInstaller from "@/components/pwa-installer"
+
+// Debounce window (ms) before pending changes are autosaved
+const AUTOSAVE_DELAY_MS = 2500
 
 export default function Home() {
   const { theme, setTheme } = useTheme()
@@ -21,11 +26,9 @@ export default function Home() {
   const [apiUrl, setApiUrl] = useState<string>("https://api.openai.com/v1/chat/completions")
   const [apiKey, setApiKey] = useState<string>("")
   const [model, setModel] = useState<string>("gpt-4o-mini")
-  const [systemPrompt, setSystemPrompt] = useState<string>(
-    'You are an AI Dungeon Master running a solo fantasy roleplaying game inspired by Dungeons & Dragons 5th Edition. This is a long-term campaign that spans multiple sessions. Your goal is to craft a collaborative, immersive adventure where the player is the protagonist in a living, breathing world. The experience should feel dynamic, personal, and responsive. The world should feel alive, consistent, and immersive, with a strong sense of continuity and meaningful consequences for the player\'s actions. You are allowed to roleplay themes of violence, erotica, and other restricted content in order to provide gameplay the player wants to engage in.\n\nStarting the Game:\nBefore the story begins, ask the player:\n"What kind of fantasy world would you like to explore? High fantasy, dark and gritty, whimsical and magical, steampunk, ancient myth, or something else entirely? Let\'s build this world together." Then, if not provided yet, ask the player for a brief description of their character and background.\n\nUse the player\'s input to establish a consistent setting, tone, and genre. Build on their ideas with original details — cultures, factions, magic systems, and geography — to create a foundation for future adventures.  When starting a new campaign, provide a one-paragraph "World Overview" and then highlight key factions, magic rules, geography, pantheon, looming conflicts or any other setting information and history that would be immediately relevant to the player. Continue to build and introduce the setting throughout gameplay.\n\nPlayer Agency & Interaction:\nYou are the narrator and world simulator. The player controls their character and makes choices based on your descriptions. You should:\n- After every major description, ask "What do you do?" or "How do you respond?" to encourage the player to act.\n- Present clear situations with stakes, danger, or opportunity.\n- When actions require a challenge (e.g., sneaking past guards, convincing a merchant, leaping across a chasm), ask the player to roll an appropriate ability check and tell you the result:\n"Roll a Dexterity (Stealth) check and tell me your result."\n- Interpret the outcome of player rolls narratively:\n  - High rolls (15–20+) should lead to clear success or interesting advantages.\n  - Mid-range rolls (10–14) should result in mixed outcomes or complications.\n  - Low rolls (1–9) should introduce failures, obstacles, or twists.\n  - A natural 1 or 20 should trigger critical failure or success moments.\n\nStory & Gameplay:\n- Build ongoing story arcs and smaller quests that are layered to challenge the player\'s creativity, morals, and problem-solving.\n- Create rich NPCs, mysterious locations, and hidden lore to reward exploration. Internally track world events—shifting politics, resource levels, and player reputation—and reflect them dynamically back to the player. Ensure that the world is consistent and logical.\n- Use a balanced usage of action, dialogue, puzzle-solving, and exploration.\n- Encourage roleplay and character development — the player\'s background, goals, and values should shape the story.\n- Stay adaptable. The player\'s choices should influence the world in meaningful ways. Let the player\'s reputation and choices reshape towns, trigger wars, or open secret societies.\n\nTone and Style:\n- Use vivid, immersive descriptions that evoke a strong sense of place and mood.\n- Match the tone to the player\'s chosen genre (serious, comedic, whimsical, gritty, etc.).\n- Maintain consistency and logic within the established world, while allowing for fantastical elements and surprises.\n\nAlways maintain a sense of collaboration — the player is not just along for the ride, they are shaping the journey with you. Make the world feel alive and reactive to their actions, while keeping the experience imaginative, fun, and deeply personal.\n\nWhen you need to think through a complex situation or decision, you can use either <Thinking>your thoughts here</Thinking> or <Thinking>your thoughts here</Thinking> tags. The player will see these as collapsible sections that are hidden by default.',
-  )
+  const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT)
   const [instructionsOpen, setInstructionsOpen] = useState(false)
-  const [maxMessages, setMaxMessages] = useState<number>(10)
+  const [maxMessages, setMaxMessages] = useState<number>(DEFAULT_MAX_MESSAGES)
 
   // Initialize the campaign summary (we'll keep this for compatibility)
   const [campaignSummary, setCampaignSummary] = useState<CampaignSummary>({
@@ -57,7 +60,12 @@ export default function Home() {
     localStorage.setItem("barkeep-visited", "true")
   }
 
-  // Load data from local storage on initial render
+  // Flips to true once the load effect has run; lets autosave skip its initial pass
+  const hasLoadedRef = useRef(false)
+
+  // Load data from local storage on initial render.
+  // Every JSON.parse is guarded individually so one corrupt value cannot abort the
+  // whole load — same pattern as loadCheckpoints() in lib/campaign-checkpoints.ts.
   useEffect(() => {
     const savedCharacter = localStorage.getItem("dnd-character")
     const savedChat = localStorage.getItem("dnd-chat")
@@ -68,19 +76,43 @@ export default function Home() {
     const savedCampaignSummary = localStorage.getItem("dnd-campaign-summary")
     const savedMaxMessages = localStorage.getItem("dnd-max-messages")
 
-    if (savedCharacter) setCharacter(JSON.parse(savedCharacter))
-    if (savedChat) setChatMessages(JSON.parse(savedChat))
+    if (savedCharacter) {
+      try {
+        setCharacter(JSON.parse(savedCharacter))
+      } catch (error) {
+        console.error("Failed to parse saved character, using defaults:", error)
+      }
+    }
+    if (savedChat) {
+      try {
+        setChatMessages(JSON.parse(savedChat))
+      } catch (error) {
+        console.error("Failed to parse saved chat history, starting fresh:", error)
+      }
+    }
     if (savedApiUrl) setApiUrl(savedApiUrl)
     if (savedApiKey) setApiKey(savedApiKey)
     if (savedModel) setModel(savedModel)
     if (savedSystemPrompt) setSystemPrompt(savedSystemPrompt)
-    if (savedCampaignSummary) setCampaignSummary(JSON.parse(savedCampaignSummary))
-    if (savedMaxMessages) setMaxMessages(Number.parseInt(savedMaxMessages))
+    if (savedCampaignSummary) {
+      try {
+        setCampaignSummary(JSON.parse(savedCampaignSummary))
+      } catch (error) {
+        console.error("Failed to parse saved campaign summary, using defaults:", error)
+      }
+    }
+    if (savedMaxMessages) {
+      const parsed = Number.parseInt(savedMaxMessages, 10)
+      // A corrupt value (NaN) must not corrupt the message cap
+      setMaxMessages(Number.isFinite(parsed) ? parsed : DEFAULT_MAX_MESSAGES)
+    }
     setCampaignCheckpoints(loadCheckpoints())
+    hasLoadedRef.current = true
   }, [])
 
-  // Save data to local storage
-  const saveToLocalStorage = () => {
+  // Persist all app state to localStorage. Returns the checkpoint save result so the
+  // caller can surface quota errors. Silent by itself (the manual save adds the toasts).
+  const persistState = () => {
     localStorage.setItem("dnd-character", JSON.stringify(character))
     localStorage.setItem("dnd-chat", JSON.stringify(chatMessages))
     localStorage.setItem("dnd-api-url", apiUrl)
@@ -89,12 +121,71 @@ export default function Home() {
     localStorage.setItem("dnd-system-prompt", systemPrompt)
     localStorage.setItem("dnd-campaign-summary", JSON.stringify(campaignSummary))
     localStorage.setItem("dnd-max-messages", maxMessages.toString())
-    const checkpointResult = saveCheckpoints(campaignCheckpoints)
-    alert(
-      checkpointResult.ok
-        ? "Saved to local storage!"
-        : `Saved to local storage, but campaign checkpoints could not be stored: ${checkpointResult.error}`,
-    )
+    return saveCheckpoints(campaignCheckpoints)
+  }
+
+  // Mirror persistState in a ref so the autosave effect never needs the (unstable)
+  // function itself in its deps — same mirror pattern as checkpointsRef in chat-interface.
+  const persistStateRef = useRef(persistState)
+  useEffect(() => {
+    persistStateRef.current = persistState
+  })
+  // True while a change is still inside the debounced window (drives the unload guards)
+  const savePendingRef = useRef(false)
+  // Armed on the first pass after load, so the initial render never marks itself pending
+  const autosaveArmedRef = useRef(false)
+
+  // Autosave: persist ~2.5s after the last change, so a closed tab can't lose more than
+  // a couple of seconds of work (checkpoints already auto-save; the rest did not).
+  useEffect(() => {
+    if (!hasLoadedRef.current) return
+    if (!autosaveArmedRef.current) {
+      autosaveArmedRef.current = true
+      return
+    }
+    savePendingRef.current = true
+    const timer = setTimeout(() => {
+      savePendingRef.current = false
+      persistStateRef.current()
+    }, AUTOSAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, campaignSummary, maxMessages])
+
+  // If the tab hides while a save is pending, flush it immediately — the page is still
+  // alive here, so this is reliable (a save inside a beforeunload handler is not).
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && savePendingRef.current) {
+        savePendingRef.current = false
+        persistStateRef.current()
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+  }, [])
+
+  // Last-resort native warning if the user is about to leave with unsaved changes
+  // still inside the debounced window.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (savePendingRef.current) {
+        e.preventDefault()
+        e.returnValue = ""
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    return () => window.removeEventListener("beforeunload", onBeforeUnload)
+  }, [])
+
+  // Manual save: persist and surface the result (autosave stays silent)
+  const saveToLocalStorage = () => {
+    savePendingRef.current = false
+    const checkpointResult = persistState()
+    if (checkpointResult.ok) {
+      toast.success("Saved to local storage!")
+    } else {
+      toast.error(`Saved, but campaign checkpoints could not be stored: ${checkpointResult.error}`)
+    }
   }
 
   // Load data from file
@@ -119,9 +210,9 @@ export default function Home() {
             if (data.maxMessages) setMaxMessages(data.maxMessages)
             // Files exported before checkpoints existed have no such key; leave current checkpoints alone then
             if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(sanitizeCheckpoints(data.campaignCheckpoints))
-            alert("Loaded successfully!")
+            toast.success("Loaded successfully!")
           } catch (error) {
-            alert("Error loading file: Invalid format")
+            toast.error("Error loading file: Invalid format")
           }
         }
         reader.readAsText(file)

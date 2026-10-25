@@ -26,7 +26,7 @@ export default function AddFeatDialog({ open, onOpenChange, onAdd, chatMessages 
     if (!name.trim()) return
 
     onAdd({
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name,
       description,
     })

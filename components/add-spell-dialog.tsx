@@ -52,7 +52,7 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
     const newSpell: Spell = {
       ...spell,
-      id: spell.id || Date.now().toString(),
+      id: spell.id || crypto.randomUUID(),
     }
 
     onAdd(newSpell)

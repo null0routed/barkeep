@@ -1,6 +1,8 @@
 // Service Worker for Barkeep PWA
 
-const CACHE_NAME = "barkeep-cache-v1"
+// Bumped to v2 when fetch behavior changed (navigations are now network-first) so the
+// activate handler prunes caches created by the old cache-everything worker
+const CACHE_NAME = "barkeep-cache-v2"
 const urlsToCache = [
   "/",
   "/index.html",
@@ -23,8 +25,25 @@ self.addEventListener("install", (event) => {
   )
 })
 
-// Fetch event - serve from cache if available, otherwise fetch from network
+// Fetch event: navigations are network-first — a new deploy's index.html must win over
+// a stale cached copy, which could reference hashed assets that no longer exist.
+// Everything else stays cache-first (those hashed assets are immutable).
 self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === "basic") {
+            const responseToCache = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache))
+          }
+          return response
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || Response.error())),
+    )
+    return
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       // Cache hit - return response

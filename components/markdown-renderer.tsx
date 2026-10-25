@@ -41,11 +41,6 @@ function processThinkTags(content: string) {
   const blocks = []
   let currentIndex = 0
 
-  // Regular expressions to match both <Thinking> and <Thinking> tags (case-insensitive)
-  // We'll use two separate regexes to ensure we capture the exact tag used
-  const thinkingRegex = /<Thinking>([\s\S]*?)<\/Thinking>/gi
-  const thinkRegex = /<Thinking>([\s\S]*?)<\/think>/gi
-
   // Combined regex that matches either tag pattern
   const combinedRegex = /<(Thinking|think)>([\s\S]*?)<\/\1>/gi
 

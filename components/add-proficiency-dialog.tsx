@@ -22,7 +22,7 @@ export default function AddProficiencyDialog({ open, onOpenChange, onAdd }: AddP
     if (!name.trim()) return
 
     onAdd({
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name,
       type,
     })

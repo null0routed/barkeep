@@ -78,7 +78,7 @@ export default function AddItemDialog({
     setGenerationError(null)
 
     try {
-      const prompt = `Provide a stat block for the D&D item ${name}. The item should be a JSON object enclosed in a code block formatted with json, containing an array of loot items.
+      const prompt = `Provide a stat block for the D&D item ${name}. The item should be a JSON object enclosed in a code block formatted with json, containing an array of exactly one loot item (only the first entry is ever used).
 
 Each item must have:
 name (string): The item name

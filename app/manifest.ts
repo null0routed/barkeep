@@ -47,7 +47,6 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#2D1600",
     background_color: "#2D1600",
     display: "standalone",
-    orientation: "portrait",
     scope: "/",
   }
 }
