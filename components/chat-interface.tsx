@@ -48,6 +48,21 @@ interface ChatInterfaceProps {
 // Maximum number of previous messages to include in the context
 const MAX_PREVIOUS_MESSAGES = 6
 
+// Static tool definition (module scope keeps its identity stable across renders —
+// same pattern as campaignCheckpointTools in lib/campaign-checkpoints.ts)
+const CHARACTER_SHEET_TOOL = {
+  type: "function",
+  function: {
+    name: "getCharacterSheet",
+    description: "Get the player's character sheet information",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+}
+
 // Memoized message component to prevent re-rendering all messages when typing
 const ChatMessageComponent = memo(
   ({
@@ -217,22 +232,27 @@ export default function ChatInterface({
     return () => window.removeEventListener("resize", updateChatHeight)
   }, [updateChatHeight])
 
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  // Update header summary when messages change
-  useEffect(() => {
-    if (messages.length > 0) {
-      updateHeaderSummary(messages)
-    }
-  }, [messages])
-
   const scrollToBottom = useCallback(() => {
     if (chatContentRef.current) {
       chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight
     }
   }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  // Update header summary when messages change.
+  // Intentionally NOT depending on updateHeaderSummary: that callback's identity changes
+  // whenever campaignSummary updates (which happens on every successful summary fetch), so
+  // adding it here would re-fire this effect -> an endless chain of paid API calls.
+  // Firing only on messages changes is the intended behavior.
+  useEffect(() => {
+    if (messages.length > 0) {
+      updateHeaderSummary(messages)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason documented above
+  }, [messages])
 
   const updateHeaderSummary = useCallback(
     async (messageHistory: ChatMessage[]) => {
@@ -299,20 +319,6 @@ export default function ChatInterface({
     },
     [apiKey, apiUrl, model, campaignSummary, setCampaignSummary],
   )
-
-  // Define the character sheet tool
-  const characterSheetTool = {
-    type: "function",
-    function: {
-      name: "getCharacterSheet",
-      description: "Get the player's character sheet information",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  }
 
   // Function to handle tool calls (character sheet + campaign checkpoints)
   const handleToolCalls = useCallback(
@@ -406,7 +412,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           body: JSON.stringify({
             model: model,
             messages: apiMessages,
-            tools: [characterSheetTool, ...campaignCheckpointTools],
+            tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools],
             tool_choice: "auto",
             stream: false,
           }),
@@ -451,7 +457,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         throw error
       }
     },
-    [apiKey, apiUrl, model, systemPrompt, headerSummary, characterSheetTool, handleToolCalls],
+    [apiKey, apiUrl, model, systemPrompt, headerSummary, handleToolCalls],
   )
 
   const handleSubmit = useCallback(

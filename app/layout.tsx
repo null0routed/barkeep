@@ -23,7 +23,6 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.json",
   themeColor: "#2D1600",
-    generator: 'v0.dev'
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -34,14 +34,14 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
             <div>
               <h3 className="font-bold text-lg mb-2">Getting Started</h3>
               <p className="mb-2">
-                Before you can use the AI chat features, you'll need to set up your API connection:
+                Before you can use the AI chat features, you’ll need to set up your API connection:
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
                 <li>
                   Click the <span className="font-mono bg-muted px-1 rounded">⚙️</span> icon in the AI Chat section
                 </li>
                 <li>Enter your OpenAI API key or the API key for your preferred AI service</li>
-                <li>Verify the API URL is correct (default is OpenAI's endpoint)</li>
+                <li>Verify the API URL is correct (default is OpenAI’s endpoint)</li>
                 <li>Select your preferred model (e.g., gpt-4o-mini, gpt-3.5-turbo)</li>
                 <li>Customize the system prompt if desired</li>
               </ol>
@@ -53,7 +53,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>
                   <strong>Local Storage:</strong> Click the <span className="font-mono bg-muted px-1 rounded">💾</span>{" "}
-                  icon to save to your browser's local storage
+                  icon to save to your browser’s local storage
                 </li>
                 <li>
                   <strong>Export to File:</strong> Click the <span className="font-mono">Export</span> button to
@@ -75,7 +75,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                   <strong>Basic Information:</strong> Name, class, race, level, and background
                 </li>
                 <li>
-                  <strong>Ability Scores:</strong> Set your character's six core abilities
+                  <strong>Ability Scores:</strong> Set your character’s six core abilities
                 </li>
                 <li>
                   <strong>Inventory & Equipment:</strong> Track items with quantities, descriptions, and rarity
@@ -96,7 +96,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               <h3 className="font-bold text-lg mb-2">AI Integration</h3>
               <p className="mb-2">You can pull information directly from the AI chat into your character sheet:</p>
               <ul className="list-disc list-inside space-y-2 ml-4">
-                <li>When adding inventory items, equipment, traits, or feats, toggle "Pull from chat"</li>
+                <li>When adding inventory items, equipment, traits, or feats, toggle “Pull from chat”</li>
                 <li>Select an AI message containing relevant information</li>
                 <li>The system will attempt to extract details automatically</li>
                 <li>You can edit the extracted information before adding it to your sheet</li>
@@ -111,7 +111,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Type messages to interact with the AI assistant</li>
                 <li>The default system prompt sets up the AI as a D&D Dungeon Master</li>
-                <li>You can modify the system prompt to change the AI's behavior</li>
+                <li>You can modify the system prompt to change the AI’s behavior</li>
                 <li>Chat history is saved along with your character sheet</li>
               </ul>
             </div>
@@ -125,7 +125,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                   <span className="font-mono text-xs">http://localhost:1234/v1/chat/completions</span>)
                 </li>
                 <li>Enter the appropriate model name for your local setup</li>
-                <li>Some local servers don't require an API key</li>
+                <li>Some local servers don’t require an API key</li>
                 <li>Compatible with Ollama, LM Studio, and other OpenAI-compatible APIs</li>
               </ul>
             </div>

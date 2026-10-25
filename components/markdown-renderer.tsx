@@ -130,6 +130,21 @@ const MarkdownComponents = {
   )),
 }
 
+// React DevTools names for the memoized components (same pattern as chat-interface.tsx)
+MarkdownComponents.code.displayName = "MarkdownCode"
+MarkdownComponents.table.displayName = "MarkdownTable"
+MarkdownComponents.thead.displayName = "MarkdownThead"
+MarkdownComponents.th.displayName = "MarkdownTh"
+MarkdownComponents.td.displayName = "MarkdownTd"
+MarkdownComponents.h1.displayName = "MarkdownH1"
+MarkdownComponents.h2.displayName = "MarkdownH2"
+MarkdownComponents.h3.displayName = "MarkdownH3"
+MarkdownComponents.p.displayName = "MarkdownP"
+MarkdownComponents.ul.displayName = "MarkdownUl"
+MarkdownComponents.ol.displayName = "MarkdownOl"
+MarkdownComponents.li.displayName = "MarkdownLi"
+MarkdownComponents.blockquote.displayName = "MarkdownBlockquote"
+
 // Main component
 export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
   // Memoize the processed content to avoid recalculating on every render
