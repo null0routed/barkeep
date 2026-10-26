@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon } from "lucide-react"
@@ -8,15 +9,24 @@ import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
 import InstructionsModal from "@/components/instructions-modal"
 import { useTheme } from "next-themes"
-import type { CharacterData, ChatMessage, CampaignSummary, CampaignCheckpoint } from "@/lib/types"
+import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
 import { toast } from "sonner"
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/default-prompts"
 import { loadCheckpoints, saveCheckpoints, sanitizeCheckpoints } from "@/lib/campaign-checkpoints"
+import {
+  NOTES_STORAGE_KEY,
+  NOTES_CONTEXT_KEY,
+  emptyCampaignNotes,
+  sanitizeCampaignNotes,
+} from "@/lib/campaign-notes"
 import PWAInstaller from "@/components/pwa-installer"
 
 // Debounce window (ms) before pending changes are autosaved
 const AUTOSAVE_DELAY_MS = 2500
+// Draggable panel-split clamp range (percent) so neither panel can collapse
+const MIN_PANEL_SPLIT = 25
+const MAX_PANEL_SPLIT = 75
 
 export default function Home() {
   const { theme, setTheme } = useTheme()
@@ -30,15 +40,56 @@ export default function Home() {
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   const [maxMessages, setMaxMessages] = useState<number>(DEFAULT_MAX_MESSAGES)
 
-  // Initialize the campaign summary (we'll keep this for compatibility)
-  const [campaignSummary, setCampaignSummary] = useState<CampaignSummary>({
-    conversationSummary: "",
-    plotPoints: "",
-    npcs: "",
-    locations: "",
-    quests: "",
-    lastUpdated: "",
-  })
+  // Resizable split between the two panels (desktop only). panelRatio is the left
+  // panel's share in percent; persisted under dnd-panel-ratio like the other dnd-* keys.
+  const [panelRatio, setPanelRatio] = useState(50)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+
+  // Loaded in an effect (not a useState initializer) so nothing touches localStorage
+  // during the server render. Declared before the mounted effect below, so the first
+  // visible paint already carries the saved split.
+  useEffect(() => {
+    const saved = Number.parseFloat(localStorage.getItem("dnd-panel-ratio") ?? "")
+    if (Number.isFinite(saved) && saved >= MIN_PANEL_SPLIT && saved <= MAX_PANEL_SPLIT) {
+      setPanelRatio(saved)
+    }
+  }, [])
+
+  const persistSplit = (ratio: number) => {
+    localStorage.setItem("dnd-panel-ratio", String(ratio))
+  }
+
+  const startDividerDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const container = splitContainerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    document.body.style.userSelect = "none"
+    const clamp = (pct: number) => Math.min(MAX_PANEL_SPLIT, Math.max(MIN_PANEL_SPLIT, Math.round(pct)))
+    const onMove = (ev: PointerEvent) => {
+      const ratio = clamp(((ev.clientX - rect.left) / rect.width) * 100)
+      setPanelRatio(ratio)
+      persistSplit(ratio)
+    }
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      document.body.style.userSelect = ""
+    }
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    onMove(e.nativeEvent)
+  }
+
+  const resetDividerSplit = () => {
+    setPanelRatio(50)
+    persistSplit(50)
+  }
+
+  // Player-authored campaign notes (private to the player; shared with the AI only when
+  // notesInContext is opted in) + the persistence of that opt-in flag
+  const [campaignNotes, setCampaignNotes] = useState<CampaignNotes>(emptyCampaignNotes())
+  const [notesInContext, setNotesInContext] = useState(false)
 
   // Campaign status checkpoints written by the AI (persisted to localStorage by the tool itself)
   const [campaignCheckpoints, setCampaignCheckpoints] = useState<CampaignCheckpoint[]>([])
@@ -73,8 +124,9 @@ export default function Home() {
     const savedApiKey = localStorage.getItem("dnd-api-key")
     const savedModel = localStorage.getItem("dnd-model")
     const savedSystemPrompt = localStorage.getItem("dnd-system-prompt")
-    const savedCampaignSummary = localStorage.getItem("dnd-campaign-summary")
     const savedMaxMessages = localStorage.getItem("dnd-max-messages")
+    const savedNotes = localStorage.getItem(NOTES_STORAGE_KEY)
+    const savedNotesContext = localStorage.getItem(NOTES_CONTEXT_KEY)
 
     if (savedCharacter) {
       try {
@@ -94,18 +146,20 @@ export default function Home() {
     if (savedApiKey) setApiKey(savedApiKey)
     if (savedModel) setModel(savedModel)
     if (savedSystemPrompt) setSystemPrompt(savedSystemPrompt)
-    if (savedCampaignSummary) {
-      try {
-        setCampaignSummary(JSON.parse(savedCampaignSummary))
-      } catch (error) {
-        console.error("Failed to parse saved campaign summary, using defaults:", error)
-      }
-    }
     if (savedMaxMessages) {
       const parsed = Number.parseInt(savedMaxMessages, 10)
       // A corrupt value (NaN) must not corrupt the message cap
       setMaxMessages(Number.isFinite(parsed) ? parsed : DEFAULT_MAX_MESSAGES)
     }
+    if (savedNotes) {
+      try {
+        const parsedNotes = sanitizeCampaignNotes(JSON.parse(savedNotes))
+        if (parsedNotes) setCampaignNotes(parsedNotes)
+      } catch (error) {
+        console.error("Failed to parse saved campaign notes, using defaults:", error)
+      }
+    }
+    if (savedNotesContext === "1") setNotesInContext(true)
     setCampaignCheckpoints(loadCheckpoints())
     hasLoadedRef.current = true
   }, [])
@@ -119,8 +173,9 @@ export default function Home() {
     localStorage.setItem("dnd-api-key", apiKey)
     localStorage.setItem("dnd-model", model)
     localStorage.setItem("dnd-system-prompt", systemPrompt)
-    localStorage.setItem("dnd-campaign-summary", JSON.stringify(campaignSummary))
     localStorage.setItem("dnd-max-messages", maxMessages.toString())
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(campaignNotes))
+    localStorage.setItem(NOTES_CONTEXT_KEY, notesInContext ? "1" : "0")
     return saveCheckpoints(campaignCheckpoints)
   }
 
@@ -149,7 +204,7 @@ export default function Home() {
       persistStateRef.current()
     }, AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, campaignSummary, maxMessages])
+  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, maxMessages, campaignNotes, notesInContext])
 
   // If the tab hides while a save is pending, flush it immediately — the page is still
   // alive here, so this is reliable (a save inside a beforeunload handler is not).
@@ -206,10 +261,15 @@ export default function Home() {
             if (data.apiKey) setApiKey(data.apiKey)
             if (data.model) setModel(data.model)
             if (data.systemPrompt) setSystemPrompt(data.systemPrompt)
-            if (data.campaignSummary) setCampaignSummary(data.campaignSummary)
             if (data.maxMessages) setMaxMessages(data.maxMessages)
             // Files exported before checkpoints existed have no such key; leave current checkpoints alone then
             if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(sanitizeCheckpoints(data.campaignCheckpoints))
+            // Player notes + the share-with-AI opt-in (files without these keys leave the current values alone)
+            if (data.campaignNotes !== undefined) {
+              const importedNotes = sanitizeCampaignNotes(data.campaignNotes)
+              if (importedNotes) setCampaignNotes(importedNotes)
+            }
+            if (typeof data.notesInContext === "boolean") setNotesInContext(data.notesInContext)
             toast.success("Loaded successfully!")
           } catch (error) {
             toast.error("Error loading file: Invalid format")
@@ -230,9 +290,10 @@ export default function Home() {
       apiKey,
       model,
       systemPrompt,
-      campaignSummary,
       maxMessages,
       campaignCheckpoints,
+      campaignNotes,
+      notesInContext,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
@@ -249,7 +310,7 @@ export default function Home() {
   if (!mounted) return null
 
   return (
-    <main className="container mx-auto p-3 max-w-[1600px] h-screen flex flex-col">
+    <main className="container mx-auto p-3 max-w-[2200px] h-screen flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <Image src="/barkeep-logo.png" alt="Barkeep Logo" width={40} height={40} className="rounded-md" />
@@ -275,8 +336,12 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-        <div className="lg:flex-1 overflow-y-auto min-w-0">
+      <div
+        ref={splitContainerRef}
+        className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden"
+        style={{ "--split": `${panelRatio}%` } as React.CSSProperties}
+      >
+        <div className="overflow-y-auto min-w-0 lg:[flex:1_1_var(--split)]">
           <CharacterSheet
             character={character}
             setCharacter={setCharacter}
@@ -284,9 +349,23 @@ export default function Home() {
             apiUrl={apiUrl}
             apiKey={apiKey}
             model={model}
+            campaignNotes={campaignNotes}
+            setCampaignNotes={setCampaignNotes}
+            notesInContext={notesInContext}
+            setNotesInContext={setNotesInContext}
           />
         </div>
-        <div className="lg:flex-1 min-w-0 flex flex-col">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize. Double-click to reset 50/50"
+          className="hidden lg:flex self-stretch w-1.5 cursor-col-resize touch-none items-center justify-center rounded-full bg-border transition-colors hover:bg-muted-foreground/40"
+          onPointerDown={startDividerDrag}
+          onDoubleClick={resetDividerSplit}
+        >
+          <div className="h-10 w-0.5 rounded-full bg-muted-foreground/40" />
+        </div>
+        <div className="min-w-0 flex flex-col lg:[flex:1_1_calc(100%-var(--split))]">
           <ChatInterface
             messages={chatMessages}
             setMessages={setChatMessages}
@@ -298,8 +377,8 @@ export default function Home() {
             setModel={setModel}
             systemPrompt={systemPrompt}
             setSystemPrompt={setSystemPrompt}
-            campaignSummary={campaignSummary}
-            setCampaignSummary={setCampaignSummary}
+            campaignNotes={campaignNotes}
+            notesInContext={notesInContext}
             campaignCheckpoints={campaignCheckpoints}
             setCampaignCheckpoints={setCampaignCheckpoints}
             maxMessages={maxMessages}

@@ -143,15 +143,6 @@ export interface ChatMessage {
   content: string
 }
 
-export interface CampaignSummary {
-  conversationSummary: string
-  plotPoints: string
-  npcs: string
-  locations: string
-  quests: string
-  lastUpdated?: string
-}
-
 export interface CampaignNotes {
   plotPoints: string
   npcs: string

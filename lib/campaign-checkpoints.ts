@@ -168,7 +168,7 @@ export function saveCheckpoints(checkpoints: CampaignCheckpoint[]): SaveCheckpoi
 // Formatting (what the AI sees)
 // ---------------------------------------------------------------------------
 
-function formatCheckpoint(checkpoint: CampaignCheckpoint): string {
+export function formatCheckpoint(checkpoint: CampaignCheckpoint): string {
   const lines = [`CHECKPOINT: ${checkpoint.title} [id: ${checkpoint.id}] (saved ${checkpoint.createdAt})`]
   lines.push(`Summary: ${checkpoint.summary}`)
   for (const field of OPTIONAL_TEXT_FIELDS) {

@@ -8,9 +8,18 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import type { ChatMessage, CampaignSummary, CampaignCheckpoint, CharacterData } from "@/lib/types"
+import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
 import { SendIcon, SettingsIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +32,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
 import { formatCharacterData } from "@/lib/format-character-data"
-import { campaignCheckpointTools, runCheckpointTool } from "@/lib/campaign-checkpoints"
+import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
+import { formatNotesForContext } from "@/lib/campaign-notes"
 import { toast } from "sonner"
 
 interface ChatInterfaceProps {
@@ -37,8 +47,9 @@ interface ChatInterfaceProps {
   setModel: React.Dispatch<React.SetStateAction<string>>
   systemPrompt: string
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
-  campaignSummary: CampaignSummary
-  setCampaignSummary: React.Dispatch<React.SetStateAction<CampaignSummary>>
+  // Player-authored campaign notes; shared with the AI only while notesInContext is opted in
+  campaignNotes: CampaignNotes
+  notesInContext: boolean
   campaignCheckpoints: CampaignCheckpoint[]
   setCampaignCheckpoints: React.Dispatch<React.SetStateAction<CampaignCheckpoint[]>>
   maxMessages: number
@@ -49,10 +60,6 @@ interface ChatInterfaceProps {
 // Default number of previous messages included in the model context (also the shared
 // initial state in app/page.tsx — was inconsistently 6 here vs 10 there)
 export const DEFAULT_MAX_MESSAGES = 10
-
-// Debounce window before the per-turn summary call fires, so a burst of back-to-back
-// turns costs one paid call instead of one per message
-const SUMMARY_DEBOUNCE_MS = 3000
 
 // Static tool definition (module scope keeps its identity stable across renders —
 // same pattern as campaignCheckpointTools in lib/campaign-checkpoints.ts)
@@ -91,7 +98,7 @@ const ChatMessageComponent = memo(
         onMouseLeave={() => setShowControls(false)}
       >
         <div
-          className={`max-w-[85%] rounded-lg p-3 text-sm relative ${
+          className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm relative ${
             message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
           }`}
         >
@@ -167,7 +174,7 @@ const MessageList = memo(
         )}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-lg p-3 bg-muted animate-pulse text-sm">Thinking...</div>
+            <div className="max-w-[85%] max-w-3xl rounded-lg p-3 bg-muted animate-pulse text-sm">Thinking...</div>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -189,8 +196,8 @@ export default function ChatInterface({
   setModel,
   systemPrompt,
   setSystemPrompt,
-  campaignSummary,
-  setCampaignSummary,
+  campaignNotes,
+  notesInContext,
   campaignCheckpoints,
   setCampaignCheckpoints,
   maxMessages,
@@ -199,10 +206,8 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [isUpdatingSummary, setIsUpdatingSummary] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
-  const [headerSummary, setHeaderSummary] = useState("")
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -215,9 +220,6 @@ export default function ChatInterface({
   useEffect(() => {
     checkpointsRef.current = campaignCheckpoints
   }, [campaignCheckpoints])
-
-  // In-flight mirror guarding the (expensive) per-turn summary call against concurrency
-  const summaryInFlightRef = useRef(false)
 
   // Calculate and set the chat height based on window size
   const updateChatHeight = useCallback(() => {
@@ -250,90 +252,6 @@ export default function ChatInterface({
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
-
-  // Update the header summary ~3s after messages have settled (debounced).
-  // Intentionally NOT depending on updateHeaderSummary: that callback's identity changes
-  // whenever campaignSummary updates (which happens on every successful summary fetch), so
-  // adding it here would re-fire this effect -> an endless chain of paid API calls.
-  // Firing only on messages changes (debounced) is the intended behavior.
-  useEffect(() => {
-    if (messages.length === 0) return
-    const timer = setTimeout(() => {
-      updateHeaderSummary(messages)
-    }, SUMMARY_DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason documented above
-  }, [messages])
-
-  const updateHeaderSummary = useCallback(
-    async (messageHistory: ChatMessage[]) => {
-      if (!apiKey || !apiUrl || messageHistory.length < 3) {
-        // Don't update if there are too few messages
-        return
-      }
-      // In-flight guard: a second concurrent call would race on setHeaderSummary
-      if (summaryInFlightRef.current) return
-      summaryInFlightRef.current = true
-
-      setIsUpdatingSummary(true)
-
-      try {
-        // Get the most recent messages for context
-        const recentMessages = messageHistory.slice(-10)
-
-        // Create a prompt to update the header summary
-        const updatePrompt = `
-          Based on the following conversation between a player and a DM, please create a concise summary (max 150 words) 
-          that captures the key context of the conversation so far. This summary will be used as context for future messages.
-          
-          CONVERSATION:
-          ${recentMessages.map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`).join("\n\n")}
-          
-          Please provide a concise summary that captures the essential context needed to continue this conversation.
-        `
-
-        // Call the API to generate updated summary
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: "system", content: "You are a helpful assistant that summarizes D&D campaign conversations." },
-              { role: "user", content: updatePrompt },
-            ],
-            max_tokens: 300,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`)
-        }
-
-        const data = await response.json()
-        const content = data.choices[0].message.content.trim()
-
-        // Update the header summary
-        setHeaderSummary(content)
-
-        // Also update the campaign summary for compatibility
-        setCampaignSummary({
-          ...campaignSummary,
-          conversationSummary: content,
-          lastUpdated: new Date().toLocaleString(),
-        })
-      } catch (error) {
-        console.error("Error updating header summary:", error)
-      } finally {
-        summaryInFlightRef.current = false
-        setIsUpdatingSummary(false)
-      }
-    },
-    [apiKey, apiUrl, model, campaignSummary, setCampaignSummary],
-  )
 
   // Function to handle tool calls (character sheet + campaign checkpoints)
   const handleToolCalls = useCallback(
@@ -406,7 +324,11 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         const systemMessage = {
           role: "system",
           content: `${systemPrompt}\n\n${
-            headerSummary ? `CONVERSATION CONTEXT:\n${headerSummary}\n\n` : ""
+            notesInContext ? formatNotesForContext(campaignNotes) : ""
+          }${
+            campaignCheckpoints.length > 0
+              ? `CAMPAIGN CONTEXT (from the latest saved checkpoint):\n${formatCheckpoint(campaignCheckpoints[campaignCheckpoints.length - 1])}\n\n`
+              : ""
           }${toolInstructions}\nPlease keep this context in mind when responding.`,
         }
 
@@ -472,7 +394,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         throw error
       }
     },
-    [apiKey, apiUrl, model, systemPrompt, headerSummary, handleToolCalls],
+    [apiKey, apiUrl, model, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
   )
 
   const handleSubmit = useCallback(
@@ -589,7 +511,6 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
   const handleClearChat = useCallback(() => {
     setMessages([])
-    setHeaderSummary("")
     setIsAlertOpen(false)
   }, [setMessages])
 
@@ -612,18 +533,18 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           >
             <TrashIcon className="h-4 w-4" />
           </Button>
-          <Sheet>
-            <SheetTrigger asChild>
+          <Dialog>
+            <DialogTrigger asChild>
               <Button variant="outline" size="icon" title="Chat settings">
                 <SettingsIcon className="h-4 w-4" />
               </Button>
-            </SheetTrigger>
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle>Chat Settings</SheetTitle>
-                <SheetDescription>Configure your AI chat settings here.</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-4 py-4">
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Chat Settings</DialogTitle>
+                <DialogDescription>Configure your AI chat settings here.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="api-url">API URL</Label>
                   <Input
@@ -677,33 +598,25 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                     Maximum number of previous messages to include in the context (1-20).
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="system-prompt">System Prompt</Label>
-                  <Textarea
-                    id="system-prompt"
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    placeholder="You are a helpful assistant..."
-                    rows={5}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="header-summary">Current Header Summary</Label>
-                  <Textarea
-                    id="header-summary"
-                    value={headerSummary}
-                    onChange={(e) => setHeaderSummary(e.target.value)}
-                    placeholder="No summary generated yet. This will update automatically as you chat."
-                    rows={3}
-                    className="text-muted-foreground text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    This summary is automatically generated and included with each message to provide context.
-                  </p>
-                </div>
               </div>
-            </SheetContent>
-          </Sheet>
+              <div className="space-y-2">
+                <Label htmlFor="system-prompt">System Prompt</Label>
+                <Textarea
+                  id="system-prompt"
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="You are a helpful assistant..."
+                  rows={8}
+                  className="resize-y"
+                />
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button>Done</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

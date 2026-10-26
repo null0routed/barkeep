@@ -13,6 +13,7 @@ import type {
   Trait,
   Feat,
   Spell,
+  CampaignNotes,
 } from "@/lib/types"
 import AddItemDialog from "./add-item-dialog"
 import AddProficiencyDialog from "./add-proficiency-dialog"
@@ -31,6 +32,7 @@ import SkillsTab from "./character/skills-tab"
 import TraitsTab from "./character/traits-tab"
 import FeatsTab from "./character/feats-tab"
 import SpellsTab from "./character/spells-tab"
+import CampaignNotesCard from "./campaign-notes"
 
 interface CharacterSheetProps {
   character: CharacterData
@@ -39,6 +41,11 @@ interface CharacterSheetProps {
   apiUrl?: string
   apiKey?: string
   model?: string
+  // Player's campaign notes (rendered between Spell Slots and the Inventory tabs)
+  campaignNotes: CampaignNotes
+  setCampaignNotes: React.Dispatch<React.SetStateAction<CampaignNotes>>
+  notesInContext: boolean
+  setNotesInContext: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 export default function CharacterSheet({
@@ -48,6 +55,10 @@ export default function CharacterSheet({
   apiUrl = "https://api.openai.com/v1/chat/completions",
   apiKey = "",
   model = "gpt-4o-mini",
+  campaignNotes,
+  setCampaignNotes,
+  notesInContext,
+  setNotesInContext,
 }: CharacterSheetProps) {
   // Inline-edit drafts live here (not in the tabs) because Radix Tabs unmounts
   // inactive tab content — a mid-edit tab switch must not lose the edited values.
@@ -151,6 +162,13 @@ export default function CharacterSheet({
       <SavingThrowsSection character={character} setCharacter={setCharacter} />
 
       <SpellSlotsSection character={character} setCharacter={setCharacter} />
+
+      <CampaignNotesCard
+        notes={campaignNotes}
+        onUpdate={setCampaignNotes}
+        inContext={notesInContext}
+        onToggleContext={setNotesInContext}
+      />
 
       <Tabs defaultValue="inventory">
         <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
