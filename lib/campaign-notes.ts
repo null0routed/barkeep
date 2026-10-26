@@ -38,7 +38,7 @@ export function sanitizeCampaignNotes(raw: unknown): CampaignNotes | null {
   return notes.plotPoints || notes.npcs || notes.locations || notes.quests ? notes : null
 }
 
-const NOTE_FIELDS: Array<[keyof CampaignNotes, string]> = [
+const NOTE_FIELDS: Array<[Exclude<keyof CampaignNotes, "lastUpdated">, string]> = [
   ["plotPoints", "Plot Points"],
   ["npcs", "NPCs"],
   ["locations", "Locations"],
@@ -49,7 +49,7 @@ const NOTE_FIELDS: Array<[keyof CampaignNotes, string]> = [
 export function formatNotesForContext(notes: CampaignNotes, maxChars: number = NOTES_CONTEXT_MAX_CHARS): string {
   const lines: string[] = []
   for (const [field, label] of NOTE_FIELDS) {
-    const value = notes[field]
+    const value = notes[field].trim()
     if (value) lines.push(`${label}: ${value}`)
   }
   if (lines.length === 0) return ""

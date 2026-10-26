@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Match the locally verified runtime (Node v18.x); Next 15 requires >= 18.17
+          node-version: 18
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Same gates run locally on every change, plus the one CI adds: the unit
+      # tests (not enforced by next build)
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build (enforces both lint and types)
+        run: npm run build
