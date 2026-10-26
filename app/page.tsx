@@ -8,6 +8,7 @@ import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
 import InstructionsModal from "@/components/instructions-modal"
+import ExportDialog from "@/components/export-dialog"
 import { useTheme } from "next-themes"
 import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
@@ -38,6 +39,8 @@ export default function Home() {
   const [model, setModel] = useState<string>("gpt-4o-mini")
   const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT)
   const [instructionsOpen, setInstructionsOpen] = useState(false)
+  // Per-export API key decision (dialog) — see components/export-dialog.tsx
+  const [exportOpen, setExportOpen] = useState(false)
   const [maxMessages, setMaxMessages] = useState<number>(DEFAULT_MAX_MESSAGES)
 
   // Resizable split between the two panels (desktop only). panelRatio is the left
@@ -271,6 +274,8 @@ export default function Home() {
             }
             if (typeof data.notesInContext === "boolean") setNotesInContext(data.notesInContext)
             toast.success("Loaded successfully!")
+            // A shared save should never silently change another device's AI connection
+            if (data.apiKey) toast.warning("This file contained an API key — it has been applied to this device.")
           } catch (error) {
             toast.error("Error loading file: Invalid format")
           }
@@ -281,13 +286,15 @@ export default function Home() {
     input.click()
   }
 
-  // Save data to file
-  const saveToFile = () => {
+  // Save data to file. includeApiKey is the player's per-export choice (ExportDialog):
+  // the key is omitted entirely, and import's `if (data.apiKey)` guard then leaves the
+  // destination device's existing key untouched.
+  const saveToFile = (includeApiKey: boolean) => {
     const data = {
       character,
       chatMessages,
       apiUrl,
-      apiKey,
+      ...(includeApiKey ? { apiKey } : {}),
       model,
       systemPrompt,
       maxMessages,
@@ -304,6 +311,7 @@ export default function Home() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    toast.success(includeApiKey ? "Save file exported (with API key)" : "Save file exported (without API key)")
   }
 
   // If not mounted yet, don't render anything to avoid hydration mismatch
@@ -330,7 +338,15 @@ export default function Home() {
           <Button variant="outline" size="icon" onClick={loadFromFile}>
             <UploadIcon className="h-4 w-4" />
           </Button>
-          <Button onClick={saveToFile} size="sm">
+          <Button
+            size="sm"
+            onClick={() => {
+              // No key set → nothing to protect and no meaningful choice: export directly.
+              // Key set → per-export decision in ExportDialog.
+              if (apiKey.trim()) setExportOpen(true)
+              else saveToFile(false)
+            }}
+          >
             Export
           </Button>
         </div>
@@ -389,6 +405,14 @@ export default function Home() {
       </div>
 
       <InstructionsModal open={instructionsOpen} onOpenChange={handleCloseInstructions} />
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        onConfirm={(includeKey) => {
+          setExportOpen(false)
+          saveToFile(includeKey)
+        }}
+      />
     </main>
   )
 }
