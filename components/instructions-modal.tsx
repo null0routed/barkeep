@@ -43,7 +43,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                 <li>Enter your OpenAI API key or the API key for your preferred AI service</li>
                 <li>Verify the API URL is correct (default is OpenAI’s endpoint)</li>
                 <li>Select your preferred model (e.g., gpt-4o-mini, gpt-3.5-turbo)</li>
-                <li>Customize the system prompt if desired</li>
+                <li>Add a custom system prompt (optional) to replace the built-in one</li>
               </ol>
             </div>
 
@@ -110,8 +110,8 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               <p className="mb-2">The AI chat is pre-configured as a D&D Dungeon Master, but can be customized:</p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Type messages to interact with the AI assistant</li>
-                <li>The default system prompt sets up the AI as a D&D Dungeon Master</li>
-                <li>You can modify the system prompt to change the AI’s behavior</li>
+                <li>The built-in prompt sets up the AI as a D&amp;D Dungeon Master</li>
+                <li>Optionally add a custom system prompt in the AI chat settings to replace it</li>
                 <li>Chat history is saved along with your character sheet</li>
               </ul>
             </div>

@@ -13,7 +13,7 @@ import { useTheme } from "next-themes"
 import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
 import { toast } from "sonner"
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/default-prompts"
+import { migrateStoredSystemPrompt } from "@/lib/system-prompt"
 import { loadCheckpoints, saveCheckpoints, sanitizeCheckpoints } from "@/lib/campaign-checkpoints"
 import {
   NOTES_STORAGE_KEY,
@@ -37,7 +37,9 @@ export default function Home() {
   const [apiUrl, setApiUrl] = useState<string>("https://api.openai.com/v1/chat/completions")
   const [apiKey, setApiKey] = useState<string>("")
   const [model, setModel] = useState<string>("gpt-4o-mini")
-  const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT)
+  // Custom (player-authored) system prompt only — "" means "use the built-in DM prompt",
+  // which is resolved at request time (chat-interface) and never rendered in settings.
+  const [systemPrompt, setSystemPrompt] = useState<string>("")
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   // Per-export API key decision (dialog) — see components/export-dialog.tsx
   const [exportOpen, setExportOpen] = useState(false)
@@ -148,7 +150,10 @@ export default function Home() {
     if (savedApiUrl) setApiUrl(savedApiUrl)
     if (savedApiKey) setApiKey(savedApiKey)
     if (savedModel) setModel(savedModel)
-    if (savedSystemPrompt) setSystemPrompt(savedSystemPrompt)
+    // Migration: a byte-for-byte copy of the built-in default (auto-stored by older
+    // versions) resets to "" so it no longer renders in the settings dialog; a genuine
+    // customization carries through untouched (see lib/system-prompt.ts).
+    setSystemPrompt(migrateStoredSystemPrompt(savedSystemPrompt))
     if (savedMaxMessages) {
       const parsed = Number.parseInt(savedMaxMessages, 10)
       // A corrupt value (NaN) must not corrupt the message cap
@@ -263,7 +268,9 @@ export default function Home() {
             if (data.apiUrl) setApiUrl(data.apiUrl)
             if (data.apiKey) setApiKey(data.apiKey)
             if (data.model) setModel(data.model)
-            if (data.systemPrompt) setSystemPrompt(data.systemPrompt)
+            // Same migration as the localStorage load: old export files may carry an
+            // untouched copy of the built-in prompt.
+            if (data.systemPrompt !== undefined) setSystemPrompt(migrateStoredSystemPrompt(data.systemPrompt))
             if (data.maxMessages) setMaxMessages(data.maxMessages)
             // Files exported before checkpoints existed have no such key; leave current checkpoints alone then
             if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(sanitizeCheckpoints(data.campaignCheckpoints))

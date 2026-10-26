@@ -33,6 +33,7 @@ import {
 import MarkdownRenderer from "./markdown-renderer"
 import { formatCharacterData } from "@/lib/format-character-data"
 import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
+import { resolveSystemPrompt } from "@/lib/system-prompt"
 import { formatNotesForContext } from "@/lib/campaign-notes"
 import { toast } from "sonner"
 
@@ -45,6 +46,9 @@ interface ChatInterfaceProps {
   setApiKey: React.Dispatch<React.SetStateAction<string>>
   model: string
   setModel: React.Dispatch<React.SetStateAction<string>>
+  // Player-authored CUSTOM system prompt only. "" means "use the built-in DM prompt" —
+  // the resolution to the actual model-facing prompt happens in callApi (TODO #7), and
+  // the built-in text itself is never rendered in the settings dialog.
   systemPrompt: string
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
   // Player-authored campaign notes; shared with the AI only while notesInContext is opted in
@@ -323,7 +327,8 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
         const systemMessage = {
           role: "system",
-          content: `${systemPrompt}\n\n${
+          // The custom prompt wins if set; otherwise the built-in DM prompt (TODO #7).
+          content: `${resolveSystemPrompt(systemPrompt)}\n\n${
             notesInContext ? formatNotesForContext(campaignNotes) : ""
           }${
             campaignCheckpoints.length > 0
@@ -600,15 +605,19 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="system-prompt">System Prompt</Label>
+                <Label htmlFor="custom-system-prompt">Custom System Prompt</Label>
                 <Textarea
-                  id="system-prompt"
+                  id="custom-system-prompt"
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="You are a helpful assistant..."
-                  rows={8}
+                  placeholder="Optional. Leave blank to use the built-in D&D Dungeon Master prompt, or enter your own to replace it…"
+                  rows={6}
                   className="resize-y"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Only your own text lives here. When left blank the built-in Dungeon Master prompt is used
+                  automatically and is never shown or pre-filled in this box.
+                </p>
               </div>
               <DialogFooter>
                 <DialogClose asChild>
