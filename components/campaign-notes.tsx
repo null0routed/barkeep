@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ChevronUpIcon, ChevronDownIcon } from "lucide-react"
 import type { CampaignNotes } from "@/lib/types"
+import { NOTES_MAX_TOTAL_CHARS, notesTotalChars } from "@/lib/campaign-notes"
 
 interface CampaignNotesProps {
   notes: CampaignNotes
@@ -29,7 +30,22 @@ export default function CampaignNotesComponent({ notes, onUpdate, inContext, onT
   // stays focused on character data; the chevron/label row stays visible either way
   const [isOpen, setIsOpen] = useState(false)
 
-  const handleFieldChange = (key: keyof CampaignNotes, value: string) => {
+  // "current / total" counter (locked spec S2): live, amber at ≥80%, red at the cap
+  const totalChars = notesTotalChars(notes)
+  const counterTone =
+    totalChars >= NOTES_MAX_TOTAL_CHARS
+      ? "text-destructive"
+      : totalChars >= NOTES_MAX_TOTAL_CHARS * 0.8
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-muted-foreground"
+
+  // Total-char budget across all fields (TODO #1, locked spec): typing into one field
+  // can only grow it by whatever the OTHER fields leave of the 16K budget.
+  const handleFieldChange = (key: keyof CampaignNotes, rawValue: string) => {
+    const usedByOthers = NOTE_FIELDS.reduce((sum, f) => (f.key === key ? sum : sum + (notes[f.key] ?? "").length), 0)
+    const allowed = Math.max(0, NOTES_MAX_TOTAL_CHARS - usedByOthers)
+    const value = rawValue.slice(0, allowed)
+    if (value === notes[key]) return
     onUpdate({
       ...notes,
       [key]: value,
@@ -74,9 +90,15 @@ export default function CampaignNotesComponent({ notes, onUpdate, inContext, onT
                 />
               </div>
             ))}
-            <div className="text-xs text-muted-foreground">
-              {notes.lastUpdated ? `Last updated: ${notes.lastUpdated}` : "No notes yet — jot things down here while you chat."}
-              {!inContext && " Off — notes are not being shared with the AI."}
+            <div className="space-y-1 text-xs">
+              <div className={counterTone}>
+                {totalChars.toLocaleString()} / {NOTES_MAX_TOTAL_CHARS.toLocaleString()} characters
+                <span className="text-muted-foreground"> — the cap keeps your save under the browser&apos;s storage limit</span>
+              </div>
+              <div className="text-muted-foreground">
+                {notes.lastUpdated ? `Last updated: ${notes.lastUpdated}` : "No notes yet — jot things down here while you chat."}
+                {!inContext && " Off — notes are not being shared with the AI."}
+              </div>
             </div>
           </div>
         </CardContent>

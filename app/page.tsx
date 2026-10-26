@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon } from "lucide-react"
+import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon, AlertTriangleIcon } from "lucide-react"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
@@ -14,13 +14,29 @@ import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } fr
 import { defaultCharacter } from "@/lib/default-character"
 import { toast } from "sonner"
 import { migrateStoredSystemPrompt } from "@/lib/system-prompt"
-import { loadCheckpoints, saveCheckpoints, sanitizeCheckpoints } from "@/lib/campaign-checkpoints"
+import { loadCheckpoints, sanitizeCheckpoints, CHECKPOINTS_STORAGE_KEY, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
 import {
   NOTES_STORAGE_KEY,
   NOTES_CONTEXT_KEY,
   emptyCampaignNotes,
   sanitizeCampaignNotes,
 } from "@/lib/campaign-notes"
+import {
+  APP_STORAGE_KEYS,
+  STORAGE_SAFE_WATERMARK_BYTES,
+  STORAGE_TRIGGER_BYTES,
+  formatBytes,
+  measureStoredBytes,
+  planChatTrim,
+  serializedBytes,
+} from "@/lib/storage-budget"
+
+/** Result of one persistState() call (used by the manual-save toast) */
+interface SaveResult {
+  ok: boolean
+  error?: string
+  totalBytes: number
+}
 import PWAInstaller from "@/components/pwa-installer"
 
 // Debounce window (ms) before pending changes are autosaved
@@ -99,6 +115,10 @@ export default function Home() {
   // Campaign status checkpoints written by the AI (persisted to localStorage by the tool itself)
   const [campaignCheckpoints, setCampaignCheckpoints] = useState<CampaignCheckpoint[]>([])
 
+  // Measured current storage usage in quota bytes (TODO #1): drives the warning banner
+  // from the 3.2 MB waterline up; updated after every persist and on initial load.
+  const [storageBytes, setStorageBytes] = useState<number>(0)
+
   // Use useEffect to set mounted to true and check if first visit
   useEffect(() => {
     setMounted(true)
@@ -169,22 +189,85 @@ export default function Home() {
     }
     if (savedNotesContext === "1") setNotesInContext(true)
     setCampaignCheckpoints(loadCheckpoints())
+    // Baseline measurement for the storage banner (reads current on-disk values)
+    setStorageBytes(measureStoredBytes(APP_STORAGE_KEYS))
     hasLoadedRef.current = true
   }, [])
 
-  // Persist all app state to localStorage. Returns the checkpoint save result so the
-  // caller can surface quota errors. Silent by itself (the manual save adds the toasts).
-  const persistState = () => {
-    localStorage.setItem("dnd-character", JSON.stringify(character))
-    localStorage.setItem("dnd-chat", JSON.stringify(chatMessages))
-    localStorage.setItem("dnd-api-url", apiUrl)
-    localStorage.setItem("dnd-api-key", apiKey)
-    localStorage.setItem("dnd-model", model)
-    localStorage.setItem("dnd-system-prompt", systemPrompt)
-    localStorage.setItem("dnd-max-messages", maxMessages.toString())
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(campaignNotes))
-    localStorage.setItem(NOTES_CONTEXT_KEY, notesInContext ? "1" : "0")
-    return saveCheckpoints(campaignCheckpoints)
+  /**
+   * Persist all app state to localStorage — quota-safe (TODO #1, locked spec):
+   *  1. trim target #2 first: cap the checkpoint store at MAX_CHECKPOINTS_STORED (oldest)
+   *  2. trim target #1 second: if the projected total crosses the 4 MB trigger, drop
+   *     OLDEST chat messages first, trimming down to under the 3.2 MB safe line
+   *  3. write everything inside one try/catch — a quota failure surfaces loudly with
+   *     export guidance instead of an unhandled throw in the autosave timer (spec S5)
+   *  4. publish the measured usage for the storage banner
+   * In-memory state is always preserved; only persistence can be denied.
+   */
+  const persistState = (): SaveResult => {
+    // Serialize once up front: the same strings feed both the budget math and the writes
+    const characterJson = JSON.stringify(character)
+    const notesJson = JSON.stringify(campaignNotes)
+    const maxMessagesValue = maxMessages.toString()
+    const notesContextValue = notesInContext ? "1" : "0"
+
+    // Trim target #2: checkpoint store cap (oldest pruned)
+    const checkpointDrop = Math.max(0, campaignCheckpoints.length - MAX_CHECKPOINTS_STORED)
+    const checkpoints = checkpointDrop > 0 ? campaignCheckpoints.slice(checkpointDrop) : campaignCheckpoints
+    const checkpointsJson = JSON.stringify(checkpoints)
+
+    const baseBytes =
+      serializedBytes(characterJson) +
+      serializedBytes(notesJson) +
+      serializedBytes(checkpointsJson) +
+      serializedBytes(apiUrl) +
+      serializedBytes(apiKey) +
+      serializedBytes(model) +
+      serializedBytes(systemPrompt) +
+      serializedBytes(maxMessagesValue) +
+      serializedBytes(notesContextValue)
+
+    // Trim target #1: oldest chat first — only when the projected total crosses the trigger
+    let chat = chatMessages
+    let chatDrop = 0
+    const fullChatJson = JSON.stringify(chat)
+    if (baseBytes + serializedBytes(fullChatJson) > STORAGE_TRIGGER_BYTES && chat.length > 0) {
+      chatDrop = planChatTrim({ baseBytes, messageBytes: chat.map((m) => serializedBytes(JSON.stringify(m))) })
+      if (chatDrop > 0) chat = chatMessages.slice(chatDrop)
+    }
+    const chatJson = chat === chatMessages ? fullChatJson : JSON.stringify(chat)
+
+    if (chatDrop > 0 || checkpointDrop > 0) {
+      if (chatDrop > 0) setChatMessages(chat)
+      if (checkpointDrop > 0) setCampaignCheckpoints(checkpoints)
+      const parts: string[] = []
+      if (chatDrop > 0) parts.push(`${chatDrop.toLocaleString()} oldest chat messages`)
+      if (checkpointDrop > 0) parts.push(`${checkpointDrop.toLocaleString()} oldest checkpoints`)
+      toast.warning(`Storage is near its limit — pruned ${parts.join(" and ")} to keep saving. Export to preserve them.`)
+    }
+
+    const totalBytes = baseBytes + serializedBytes(chatJson)
+
+    try {
+      localStorage.setItem("dnd-character", characterJson)
+      localStorage.setItem("dnd-chat", chatJson)
+      localStorage.setItem("dnd-api-url", apiUrl)
+      localStorage.setItem("dnd-api-key", apiKey)
+      localStorage.setItem("dnd-model", model)
+      localStorage.setItem("dnd-system-prompt", systemPrompt)
+      localStorage.setItem("dnd-max-messages", maxMessagesValue)
+      localStorage.setItem(NOTES_STORAGE_KEY, notesJson)
+      localStorage.setItem(NOTES_CONTEXT_KEY, notesContextValue)
+      localStorage.setItem(CHECKPOINTS_STORAGE_KEY, checkpointsJson)
+      setStorageBytes(totalBytes)
+      return { ok: true, totalBytes }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown storage error"
+      toast.error(
+        `Could not save to local storage (${message}). Export your save file and remove some old chat messages, then try again.`,
+      )
+      return { ok: false, error: message, totalBytes }
+    }
   }
 
   // Mirror persistState in a ref so the autosave effect never needs the (unstable)
@@ -243,12 +326,12 @@ export default function Home() {
   // Manual save: persist and surface the result (autosave stays silent)
   const saveToLocalStorage = () => {
     savePendingRef.current = false
-    const checkpointResult = persistState()
-    if (checkpointResult.ok) {
+    const result = persistState()
+    if (result.ok) {
       toast.success("Saved to local storage!")
-    } else {
-      toast.error(`Saved, but campaign checkpoints could not be stored: ${checkpointResult.error}`)
     }
+    // A failed persist already toasted inside persistState — the single loud point for
+    // every caller (autosave and manual save share the same path).
   }
 
   // Load data from file
@@ -263,8 +346,46 @@ export default function Home() {
         reader.onload = (e) => {
           try {
             const data = JSON.parse(e.target?.result as string)
+
+            // The import must respect the storage budget (TODO #1) — plan trims on the
+            // INCOMING payload, oldest chat first, before applying anything.
+            const importedChatArray = Array.isArray(data.chatMessages) ? (data.chatMessages as ChatMessage[]) : null
+            const importedCheckpoints =
+              data.campaignCheckpoints !== undefined ? sanitizeCheckpoints(data.campaignCheckpoints) : campaignCheckpoints
+            const importedNotes =
+              data.campaignNotes !== undefined ? sanitizeCampaignNotes(data.campaignNotes) : campaignNotes
+
+            const importBaseBytes =
+              serializedBytes(JSON.stringify(data.character ?? character)) +
+              serializedBytes(JSON.stringify(importedNotes)) +
+              serializedBytes(JSON.stringify(importedCheckpoints)) +
+              serializedBytes(String(data.apiUrl ?? apiUrl)) +
+              serializedBytes(String(data.apiKey ?? apiKey)) +
+              serializedBytes(String(data.model ?? model)) +
+              serializedBytes(String(data.systemPrompt ?? systemPrompt)) +
+              serializedBytes(String(data.maxMessages ?? maxMessages)) +
+              serializedBytes(String(data.notesInContext ?? notesInContext))
+
+            let chatToApply = importedChatArray
+            if (
+              importedChatArray &&
+              importBaseBytes + serializedBytes(JSON.stringify(importedChatArray)) > STORAGE_TRIGGER_BYTES &&
+              importedChatArray.length > 0
+            ) {
+              const drop = planChatTrim({
+                baseBytes: importBaseBytes,
+                messageBytes: importedChatArray.map((m) => serializedBytes(JSON.stringify(m))),
+              })
+              if (drop > 0) {
+                chatToApply = importedChatArray.slice(drop)
+                toast.warning(
+                  `Import exceeded the storage budget — the ${drop.toLocaleString()} oldest chat messages were not imported. Export them from the source device if you need them.`,
+                )
+              }
+            }
+
             if (data.character) setCharacter(data.character)
-            if (data.chatMessages) setChatMessages(data.chatMessages)
+            if (importedChatArray) setChatMessages(chatToApply as ChatMessage[])
             if (data.apiUrl) setApiUrl(data.apiUrl)
             if (data.apiKey) setApiKey(data.apiKey)
             if (data.model) setModel(data.model)
@@ -272,14 +393,15 @@ export default function Home() {
             // untouched copy of the built-in prompt.
             if (data.systemPrompt !== undefined) setSystemPrompt(migrateStoredSystemPrompt(data.systemPrompt))
             if (data.maxMessages) setMaxMessages(data.maxMessages)
-            // Files exported before checkpoints existed have no such key; leave current checkpoints alone then
-            if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(sanitizeCheckpoints(data.campaignCheckpoints))
-            // Player notes + the share-with-AI opt-in (files without these keys leave the current values alone)
-            if (data.campaignNotes !== undefined) {
-              const importedNotes = sanitizeCampaignNotes(data.campaignNotes)
-              if (importedNotes) setCampaignNotes(importedNotes)
-            }
+            // Files exported before checkpoints existed have no such key; leave current checkpoints alone then.
+            // sanitizeCheckpoints enforces the 50-checkpoint store cap on imported lists.
+            if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(importedCheckpoints)
+            // Player notes + the share-with-AI opt-in (files without these keys leave the current values alone).
+            // sanitizeCampaignNotes enforces the 16K total notes cap on imported lists.
+            if (data.campaignNotes !== undefined && importedNotes) setCampaignNotes(importedNotes)
             if (typeof data.notesInContext === "boolean") setNotesInContext(data.notesInContext)
+            // Refresh the banner after the import settles
+            setStorageBytes(measureStoredBytes(APP_STORAGE_KEYS))
             toast.success("Loaded successfully!")
             // A shared save should never silently change another device's AI connection
             if (data.apiKey) toast.warning("This file contained an API key — it has been applied to this device.")
@@ -321,6 +443,13 @@ export default function Home() {
     toast.success(includeApiKey ? "Save file exported (with API key)" : "Save file exported (without API key)")
   }
 
+  const handleExport = () => {
+    // No key set → nothing to protect and no meaningful choice: export directly.
+    // Key set → per-export decision in ExportDialog.
+    if (apiKey.trim()) setExportOpen(true)
+    else saveToFile(false)
+  }
+
   // If not mounted yet, don't render anything to avoid hydration mismatch
   if (!mounted) return null
 
@@ -345,19 +474,29 @@ export default function Home() {
           <Button variant="outline" size="icon" onClick={loadFromFile}>
             <UploadIcon className="h-4 w-4" />
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              // No key set → nothing to protect and no meaningful choice: export directly.
-              // Key set → per-export decision in ExportDialog.
-              if (apiKey.trim()) setExportOpen(true)
-              else saveToFile(false)
-            }}
-          >
+          <Button size="sm" onClick={handleExport}>
             Export
           </Button>
         </div>
       </div>
+
+      {/* Storage budget warning (TODO #1): visible from the 3.2 MB waterline upward */}
+      {storageBytes >= STORAGE_SAFE_WATERMARK_BYTES && (
+        <div
+          role="status"
+          className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+        >
+          <AlertTriangleIcon className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+          <span className="text-amber-700 dark:text-amber-400">
+            Storage at <span className="font-semibold">{formatBytes(storageBytes)}</span> of the{" "}
+            {formatBytes(STORAGE_TRIGGER_BYTES)} budget — oldest chat history will be pruned first if more space is
+            needed.
+          </span>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={handleExport}>
+            Export save
+          </Button>
+        </div>
+      )}
 
       <div
         ref={splitContainerRef}

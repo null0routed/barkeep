@@ -3,6 +3,7 @@ import { test } from "node:test"
 
 import {
   CHECKPOINTS_STORAGE_KEY,
+  MAX_CHECKPOINTS_STORED,
   formatCheckpoint,
   formatCheckpoints,
   loadCheckpoints,
@@ -101,6 +102,17 @@ test("sanitizeCheckpoints: duplicate ids get replaced with fresh unique ids", ()
   assert.equal(a.id, "same")
   assert.notEqual(b.id, "same")
   assert.notEqual(a.id, b.id)
+})
+
+test("sanitizeCheckpoints: over-cap lists are trimmed to the newest MAX_CHECKPOINTS_STORED", () => {
+  assert.ok(MAX_CHECKPOINTS_STORED >= 50) // the locked spec value
+  const capped = sanitizeCheckpoints(makeMany(MAX_CHECKPOINTS_STORED + 15))
+  assert.equal(capped.length, MAX_CHECKPOINTS_STORED)
+  // the OLDEST 15 (CP1..CP15) are dropped; the survivors start at CP16
+  const total = MAX_CHECKPOINTS_STORED + 15
+  assert.equal(capped[0]?.title, `CP${total - MAX_CHECKPOINTS_STORED + 1}`)
+  assert.equal(capped[capped.length - 1]?.title, `CP${MAX_CHECKPOINTS_STORED + 15}`)
+  assert.ok(!capped.some((cp) => cp.title === "CP1"))
 })
 
 // ---------------------------------------------------------------------------
@@ -251,6 +263,20 @@ test("runCheckpointTool(save): appends and persists only on success", () => {
   assert.ok(failed)
   assert.match(failed.content, /could not be saved to browser storage/)
   assert.equal(failed.checkpoints, ok.checkpoints)
+})
+
+test("runCheckpointTool(save): a full store prunes the oldest and tells the model", () => {
+  installWindowStorage()
+  const full = makeMany(MAX_CHECKPOINTS_STORED)
+
+  const ok = runCheckpointTool("saveCampaignCheckpoint", { title: "Latest", summary: "End of the arc" }, full)
+  assert.ok(ok)
+  assert.equal(ok.checkpoints.length, MAX_CHECKPOINTS_STORED)
+  assert.equal(ok.checkpoints[MAX_CHECKPOINTS_STORED - 1]?.title, "Latest")
+  assert.ok(!ok.checkpoints.some((cp) => cp.title === "CP1"))
+  assert.match(ok.content, new RegExp(`Total checkpoints: ${MAX_CHECKPOINTS_STORED}\\.`))
+  assert.match(ok.content, /oldest were pruned/)
+  assert.deepEqual(JSON.parse(store.get(CHECKPOINTS_STORAGE_KEY)!), ok.checkpoints)
 })
 
 test("runCheckpointTool(get): by id, unknown id, and limit clamping", () => {

@@ -8,6 +8,15 @@ import type { CampaignCheckpoint } from "./types"
 
 export const CHECKPOINTS_STORAGE_KEY = "dnd-campaign-checkpoints"
 
+/**
+ * Hard cap on the STORED checkpoint list (TODO #1, locked spec): keep the 50 newest,
+ * prune the oldest as new ones arrive. Checkpoints are the second trim target behind
+ * older chat, and bounding the store (~1–2 KB each → ≤ ~100 KB worst case) keeps the
+ * persist inside the 4 MB global storage budget. Display limits (see below) are a
+ * separate concern — those cap what the MODEL sees per get, not what is stored.
+ */
+export const MAX_CHECKPOINTS_STORED = 50
+
 export const SAVE_CHECKPOINT_TOOL_NAME = "saveCampaignCheckpoint"
 export const GET_CHECKPOINTS_TOOL_NAME = "getCampaignCheckpoints"
 
@@ -35,7 +44,9 @@ export const saveCampaignCheckpointTool = {
     name: SAVE_CHECKPOINT_TOOL_NAME,
     description:
       "Save a checkpoint of the current campaign status so it can be recalled in later sessions. " +
-      "Each call adds a new checkpoint; earlier checkpoints are never overwritten.",
+      `Each call adds a new checkpoint; earlier checkpoints are never overwritten. ` +
+      `The store keeps the ${MAX_CHECKPOINTS_STORED} newest checkpoints — the oldest are pruned as new ones arrive, ` +
+      "so save a checkpoint when the story's state settles.",
     parameters: {
       type: "object",
       properties: {
@@ -133,7 +144,9 @@ export function sanitizeCheckpoints(raw: unknown): CampaignCheckpoint[] {
     result.push(checkpoint)
   }
 
-  return result
+  // Enforce the store cap on untrusted input (legacy storage, old export files):
+  // keep the newest MAX_CHECKPOINTS_STORED entries.
+  return result.slice(-MAX_CHECKPOINTS_STORED)
 }
 
 export function loadCheckpoints(): CampaignCheckpoint[] {
@@ -254,7 +267,11 @@ export function runCheckpointTool(
       if (value) checkpoint[field] = value
     }
 
-    const next = [...current, checkpoint]
+    let next = [...current, checkpoint]
+    // Enforce the store cap at the write path too (not just untrusted input): the model
+    // sees the prune in the result so its running index stays honest.
+    const pruned = Math.max(0, next.length - MAX_CHECKPOINTS_STORED)
+    if (pruned > 0) next = next.slice(pruned)
     const result = saveCheckpoints(next)
     if (!result.ok) {
       return {
@@ -262,8 +279,10 @@ export function runCheckpointTool(
         checkpoints: current,
       }
     }
+    const pruneNote =
+      pruned > 0 ? ` The store keeps the ${MAX_CHECKPOINTS_STORED} newest, so the ${pruned} oldest were pruned.` : ""
     return {
-      content: `Checkpoint saved: "${title}" [id: ${checkpoint.id}]. Total checkpoints: ${next.length}.`,
+      content: `Checkpoint saved: "${title}" [id: ${checkpoint.id}]. Total checkpoints: ${next.length}.${pruneNote}`,
       checkpoints: next,
     }
   }

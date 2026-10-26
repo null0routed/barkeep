@@ -4,9 +4,12 @@ import { test } from "node:test"
 import {
   NOTES_CONTEXT_KEY,
   NOTES_CONTEXT_MAX_CHARS,
+  NOTES_MAX_TOTAL_CHARS,
   NOTES_STORAGE_KEY,
+  clampNotesToTotalChars,
   emptyCampaignNotes,
   formatNotesForContext,
+  notesTotalChars,
   sanitizeCampaignNotes,
 } from "./campaign-notes"
 
@@ -14,10 +17,83 @@ import {
 // Storage contract (keys are written/read by page.tsx and the export/import flows)
 // ---------------------------------------------------------------------------
 
-test("storage keys and cap are stable", () => {
+test("storage keys and caps are stable", () => {
   assert.equal(NOTES_STORAGE_KEY, "dnd-campaign-notes")
   assert.equal(NOTES_CONTEXT_KEY, "dnd-notes-in-context")
   assert.equal(NOTES_CONTEXT_MAX_CHARS, 4000)
+  // Locked spec: the notes store allows more than the old "15K characters" use case.
+  assert.equal(NOTES_MAX_TOTAL_CHARS, 16_000)
+  assert.ok(NOTES_MAX_TOTAL_CHARS > 15_000)
+})
+
+// ---------------------------------------------------------------------------
+// notesTotalChars / clampNotesToTotalChars — the 16K total store cap (TODO #1)
+// ---------------------------------------------------------------------------
+
+test("notesTotalChars: sums only the four note fields, ignores lastUpdated", () => {
+  assert.equal(notesTotalChars(emptyCampaignNotes()), 0)
+  assert.equal(
+    notesTotalChars({ plotPoints: "a", npcs: "bb", locations: "ccc", quests: "dddd", lastUpdated: "x1234" }),
+    10,
+  )
+})
+
+test("clampNotesToTotalChars: at-or-under the cap returns the input by reference (identity preserved)", () => {
+  const notes = { plotPoints: "a", npcs: "bb", locations: "", quests: "ddd", lastUpdated: "" }
+  assert.equal(clampNotesToTotalChars(notes), notes)
+  const atCap = emptyCampaignNotes()
+  atCap.quests = "q".repeat(NOTES_MAX_TOTAL_CHARS)
+  assert.equal(clampNotesToTotalChars(atCap), atCap)
+})
+
+test("clampNotesToTotalChars: a single over-cap field lands exactly on the cap", () => {
+  const notes = emptyCampaignNotes()
+  notes.quests = "q".repeat(NOTES_MAX_TOTAL_CHARS + 4_000)
+  const clamped = clampNotesToTotalChars(notes)
+  assert.notEqual(clamped, notes)
+  assert.equal(clamped.quests.length, NOTES_MAX_TOTAL_CHARS)
+  assert.equal(notesTotalChars(clamped), NOTES_MAX_TOTAL_CHARS)
+  // the input object itself is never mutated
+  assert.equal(notes.quests.length, NOTES_MAX_TOTAL_CHARS + 4_000)
+})
+
+test("clampNotesToTotalChars: multi-field over-cap shrinks proportionally, total exactly at the cap", () => {
+  const notes = {
+    plotPoints: "p".repeat(100),
+    npcs: "n".repeat(200),
+    locations: "l".repeat(300),
+    quests: "q".repeat(400),
+    lastUpdated: "ts",
+  }
+  const clamped = clampNotesToTotalChars(notes, 100)
+  assert.equal(notesTotalChars(clamped), 100)
+  // 10% scale: 10/20/30/40 — every non-empty field still has a voice
+  assert.equal(clamped.plotPoints.length, 10)
+  assert.equal(clamped.npcs.length, 20)
+  assert.equal(clamped.locations.length, 30)
+  assert.equal(clamped.quests.length, 40)
+  assert.equal(clamped.lastUpdated, "ts")
+})
+
+test("clampNotesToTotalChars: floor rounding leftovers are handed back from the top", () => {
+  const notes = { plotPoints: "p".repeat(10), npcs: "n".repeat(10), locations: "", quests: "", lastUpdated: "" }
+  const clamped = clampNotesToTotalChars(notes, 5)
+  assert.equal(notesTotalChars(clamped), 5)
+  assert.equal(clamped.plotPoints.length, 3)
+  assert.equal(clamped.npcs.length, 2)
+})
+
+test("clampNotesToTotalChars: max of 0 clears every field", () => {
+  const notes = { plotPoints: "p", npcs: "n", locations: "l", quests: "q", lastUpdated: "ts" }
+  const clamped = clampNotesToTotalChars(notes, 0)
+  assert.equal(notesTotalChars(clamped), 0)
+  assert.equal(clamped.lastUpdated, "ts")
+})
+
+test("sanitizeCampaignNotes: over-cap untrusted payloads are clamped into budget", () => {
+  const out = sanitizeCampaignNotes({ plotPoints: "p".repeat(NOTES_MAX_TOTAL_CHARS), quests: "q".repeat(5_000) })
+  assert.ok(out)
+  assert.equal(notesTotalChars(out), NOTES_MAX_TOTAL_CHARS)
 })
 
 // ---------------------------------------------------------------------------
