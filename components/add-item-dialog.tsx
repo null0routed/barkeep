@@ -71,18 +71,15 @@ export default function AddItemDialog({
   }
 
   const generateItemDetails = async () => {
-    // Each precondition gets its own specific, actionable message so the user is
-    // never left guessing *why* nothing happened (TODO.MD #4 — consistent UX).
+    // Name (and an API URL) are required — but an API key is NOT. Keyless
+    // providers (e.g. local Ollama) are fully supported; we only attach an
+    // Authorization header when a key is actually set (see fetch below).
     if (!name.trim()) {
       setGenerationError("Please enter an item name first")
       return
     }
-    if (!apiKey) {
-      setGenerationError("An API key is required to generate details — set one in the AI Chat settings (⚙️).")
-      return
-    }
     if (!apiUrl) {
-      setGenerationError("An API URL is required to generate details — set one in the AI Chat settings (⚙️).")
+      setGenerationError("The API URL is empty — set one in the AI Chat settings (⚙️).")
       return
     }
 
@@ -106,7 +103,10 @@ Respond with a single JSON object only (no prose) with exactly these fields:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+          // Only send auth when a key actually exists. Keyless providers (e.g. local
+          // Ollama) must not receive a blank `Bearer` token, and their absence is
+          // perfectly fine — so the key is optional, not a requirement.
+          ...(apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
         },
         body: JSON.stringify({
           model: model,
@@ -122,6 +122,11 @@ Respond with a single JSON object only (no prose) with exactly these fields:
       })
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            `The server rejected the request (HTTP ${response.status}) — it likely requires an API key. Set one in the AI Chat settings (⚙️), or point the API URL at a keyless endpoint (e.g. a local Ollama).`,
+          )
+        }
         throw new Error(`API error: ${response.status}`)
       }
 
@@ -143,7 +148,13 @@ Respond with a single JSON object only (no prose) with exactly these fields:
       if (type === "inventory" && fields.quantity) setQuantity(fields.quantity)
     } catch (error) {
       console.error("Error generating item:", error)
-      setGenerationError("Failed to generate item details. Check your API settings.")
+      // Surface the specific reason (e.g. 401/403 "key required") when we have one,
+      // and fall back to a generic message only when the error is opaque.
+      setGenerationError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to generate item details. Check your API settings.",
+      )
     } finally {
       setIsGenerating(false)
     }
@@ -166,11 +177,7 @@ Respond with a single JSON object only (no prose) with exactly these fields:
                   size="sm"
                   variant="outline"
                   disabled={isGenerating || !name.trim()}
-                  title={
-                    !apiKey
-                      ? "An API key is required — set one in the AI Chat settings (⚙️)"
-                      : "Generate name, description, and rarity from a short item name"
-                  }
+                  title="Generate name, description, and rarity from a short item name"
                   onClick={generateItemDetails}
                 >
                   {isGenerating ? (
@@ -185,11 +192,6 @@ Respond with a single JSON object only (no prose) with exactly these fields:
                 </Button>
               </div>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
-              {!apiKey && (
-                <p className="text-xs text-amber-600 dark:text-amber-500">
-                  Tip: &quot;Generate Details&quot; needs an API key — set one in the AI Chat settings (⚙️) — before it can run.
-                </p>
-              )}
               {generationError && <p className="text-xs text-destructive">{generationError}</p>}
             </div>
 
