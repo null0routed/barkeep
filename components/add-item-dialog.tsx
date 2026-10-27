@@ -9,14 +9,17 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2Icon, WandIcon } from "lucide-react"
-import type { InventoryItem, Equipment, ChatMessage, ItemRarity } from "@/lib/types"
+import type { InventoryItem, Equipment, ItemRarity } from "@/lib/types"
+import { extractItemFields } from "@/lib/item-generator"
+
+// Rarity values the dialog's Select actually offers (ItemRarity minus "unknown")
+const GENERATABLE_RARITIES = ["common", "uncommon", "rare", "very rare", "legendary", "artifact"]
 
 interface AddItemDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onAdd: (item: InventoryItem | Equipment) => void
   type: "inventory" | "equipment"
-  chatMessages: ChatMessage[]
   apiUrl?: string
   apiKey?: string
   model?: string
@@ -27,7 +30,6 @@ export default function AddItemDialog({
   onOpenChange,
   onAdd,
   type,
-  chatMessages,
   apiUrl = "https://api.openai.com/v1/chat/completions",
   apiKey = "",
   model = "gpt-4o-mini",
@@ -78,30 +80,17 @@ export default function AddItemDialog({
     setGenerationError(null)
 
     try {
-      const prompt = `Provide a stat block for the D&D item ${name}. The item should be a JSON object enclosed in a code block formatted with json, containing an array of exactly one loot item (only the first entry is ever used).
-
-Each item must have:
-name (string): The item name
-type (string): One of weapon, armor, consumable, tool, or misc
-rarity (string): e.g., common, uncommon, rare, very rare, legendary
-description (string): A brief explanation of what the item does
-quantity (number): How many were found
-
-Always end loot sections with a properly formatted JSON object like this:
-
-\`\`\`json
+      // Ask for exactly the fields this dialog can show — the old "loot array +
+      // type field" shape demanded data the UI never displays (TODO.MD #4).
+      const rarityOptions = GENERATABLE_RARITIES.join(", ")
+      const quantityLine = type === "inventory" ? ',\n  "quantity": "A positive whole number — how many were found"' : ""
+      const prompt = `Provide canonical Dungeons & Dragons 5th Edition details for the item "${name}".
+Respond with a single JSON object only (no prose) with exactly these fields:
 {
-  "loot": [
-    {
-      "name": "Potion of Healing",
-      "type": "consumable",
-      "rarity": "common",
-      "description": "Restores 2d4 + 2 HP when consumed.",
-      "quantity": 1
-    }
-  ]
-}
-\`\`\``
+  "name": "${name}",
+  "description": "One to three sentences: what the item is, what it does, and any usage or restrictions",
+  "rarity": "One of: ${rarityOptions}"${quantityLine}
+}`
 
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -114,7 +103,7 @@ Always end loot sections with a properly formatted JSON object like this:
           messages: [
             {
               role: "system",
-              content: "You are a helpful D&D item generator. Respond only with the requested JSON format.",
+              content: `You are a D&D 5e item generator. Respond only with the requested JSON object — no prose around it.`,
             },
             { role: "user", content: prompt },
           ],
@@ -127,37 +116,21 @@ Always end loot sections with a properly formatted JSON object like this:
       }
 
       const data = await response.json()
-      const content = data.choices[0].message.content
+      const content = data.choices?.[0]?.message?.content
 
-      // Extract JSON from the response
-      const jsonMatch = content.match(/```json\s*({[\s\S]*?})\s*```/)
-
-      if (jsonMatch && jsonMatch[1]) {
-        try {
-          const parsedData = JSON.parse(jsonMatch[1])
-          if (parsedData.loot && parsedData.loot.length > 0) {
-            const item = parsedData.loot[0]
-            setName(item.name)
-            setDescription(item.description)
-
-            if (type === "inventory" && item.quantity) {
-              setQuantity(item.quantity)
-            }
-
-            if (
-              item.rarity &&
-              ["common", "uncommon", "rare", "very rare", "legendary", "artifact"].includes(item.rarity.toLowerCase())
-            ) {
-              setRarity(item.rarity.toLowerCase() as ItemRarity)
-            }
-          }
-        } catch (error) {
-          console.error("Error parsing JSON:", error)
-          setGenerationError("Failed to parse the generated item data")
-        }
-      } else {
-        setGenerationError("The AI didn't return properly formatted item data")
+      // Tolerate fences, prose, wrappers, and arrays (lib/item-generator.ts)
+      const fields = extractItemFields(content)
+      if (!fields) {
+        setGenerationError("The AI didn't return usable item details — try again, or a different model.")
+        return
       }
+
+      if (fields.name) setName(fields.name)
+      if (fields.description) setDescription(fields.description)
+      if (fields.rarity && GENERATABLE_RARITIES.includes(fields.rarity)) {
+        setRarity(fields.rarity as ItemRarity)
+      }
+      if (type === "inventory" && fields.quantity) setQuantity(fields.quantity)
     } catch (error) {
       console.error("Error generating item:", error)
       setGenerationError("Failed to generate item details. Check your API settings.")

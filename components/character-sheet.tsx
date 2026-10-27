@@ -257,7 +257,6 @@ export default function CharacterSheet({
         onOpenChange={setIsAddInventoryOpen}
         onAdd={(item) => addInventoryItem(item as InventoryItem)}
         type="inventory"
-        chatMessages={chatMessages}
         apiUrl={apiUrl}
         apiKey={apiKey}
         model={model}
@@ -268,7 +267,6 @@ export default function CharacterSheet({
         onOpenChange={setIsAddEquipmentOpen}
         onAdd={(item) => addEquipmentItem(item as Equipment)}
         type="equipment"
-        chatMessages={chatMessages}
         apiUrl={apiUrl}
         apiKey={apiKey}
         model={model}
