@@ -93,47 +93,55 @@ const ChatMessageComponent = memo(
     onRegenerate?: (id: string) => void
     isRegenerating?: boolean
   }) => {
-    const [showControls, setShowControls] = useState(false)
+    const isUser = message.role === "user"
 
     return (
-      <div
-        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} relative group`}
-        onMouseEnter={() => setShowControls(true)}
-        onMouseLeave={() => setShowControls(false)}
-      >
-        <div
-          className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm relative ${
-            message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-          }`}
-        >
-          {message.role === "assistant" ? <MarkdownRenderer content={message.content} /> : message.content}
-
-          {/* Message controls - now positioned inside the message bubble */}
-          {showControls && (
-            <div className={`absolute top-2 ${message.role === "user" ? "left-2" : "right-2"} flex flex-col gap-1`}>
-              {message.role === "assistant" && onRegenerate && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 bg-background/80 hover:bg-background"
-                  onClick={() => onRegenerate(message.id)}
-                  disabled={isRegenerating}
-                  title="Regenerate response"
-                >
-                  <RefreshCwIcon className={`h-3 w-3 ${isRegenerating ? "animate-spin" : ""}`} />
-                </Button>
-              )}
+      <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+        <div className={`flex items-start gap-1 group ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+          {/*
+            Message action toolbar (TODO.MD #3.1): sits NEXT TO the bubble
+            (user's right, assistant's left) and fades in on hover or keyboard
+            focus — never overlaid on the message text. The space is always
+            reserved (opacity only), so hover never reflows the list. On
+            touch/small screens controls stay visible since hover doesn't exist.
+          */}
+          <div
+            role="group"
+            aria-label="Message actions"
+            className="flex shrink-0 flex-col gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          >
+            {!isUser && onRegenerate && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 bg-background/80 hover:bg-background text-destructive hover:text-destructive"
-                onClick={() => onDelete(message.id)}
-                title="Delete message"
+                className="h-6 w-6 hover:bg-muted"
+                onClick={() => onRegenerate(message.id)}
+                disabled={isRegenerating}
+                title="Regenerate response"
+                aria-label="Regenerate response"
               >
-                <TrashIcon className="h-3 w-3" />
+                <RefreshCwIcon className={`h-3 w-3 ${isRegenerating ? "animate-spin" : ""}`} />
               </Button>
-            </div>
-          )}
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 hover:bg-muted"
+              onClick={() => onDelete(message.id)}
+              title="Delete message"
+              aria-label="Delete message"
+            >
+              <TrashIcon className="h-3 w-3" />
+            </Button>
+          </div>
+
+          <div
+            className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm ${
+              isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+            }`}
+          >
+            {isUser ? message.content : <MarkdownRenderer content={message.content} />}
+          </div>
         </div>
       </div>
     )
