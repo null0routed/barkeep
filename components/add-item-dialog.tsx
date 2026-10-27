@@ -71,8 +71,18 @@ export default function AddItemDialog({
   }
 
   const generateItemDetails = async () => {
-    if (!name.trim() || !apiKey || !apiUrl) {
-      setGenerationError("Please enter an item name and ensure API settings are configured")
+    // Each precondition gets its own specific, actionable message so the user is
+    // never left guessing *why* nothing happened (TODO.MD #4 — consistent UX).
+    if (!name.trim()) {
+      setGenerationError("Please enter an item name first")
+      return
+    }
+    if (!apiKey) {
+      setGenerationError("An API key is required to generate details — set one in the AI Chat settings (⚙️).")
+      return
+    }
+    if (!apiUrl) {
+      setGenerationError("An API URL is required to generate details — set one in the AI Chat settings (⚙️).")
       return
     }
 
@@ -155,8 +165,13 @@ Respond with a single JSON object only (no prose) with exactly these fields:
                   type="button"
                   size="sm"
                   variant="outline"
+                  disabled={isGenerating || !name.trim()}
+                  title={
+                    !apiKey
+                      ? "An API key is required — set one in the AI Chat settings (⚙️)"
+                      : "Generate name, description, and rarity from a short item name"
+                  }
                   onClick={generateItemDetails}
-                  disabled={isGenerating || !name.trim() || !apiKey}
                 >
                   {isGenerating ? (
                     <>
@@ -170,6 +185,11 @@ Respond with a single JSON object only (no prose) with exactly these fields:
                 </Button>
               </div>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
+              {!apiKey && (
+                <p className="text-xs text-amber-600 dark:text-amber-500">
+                  Tip: &quot;Generate Details&quot; needs an API key — set one in the AI Chat settings (⚙️) — before it can run.
+                </p>
+              )}
               {generationError && <p className="text-xs text-destructive">{generationError}</p>}
             </div>
 
