@@ -5,12 +5,12 @@
 2. Add red accenting to the export warning dialog.
 
 3. Fix the actions for the chat bubbles:
-	3.1. 'Delete' bubble appears over the text.
-	3.2. No 'retry' or 'edit' actions. Edit should allow the text to be modified then resubmit the whole chat.
-	3.3. No 'stop' action for a submitted chat.
-	3.4. No 'information' icon with a tooltip that shows stats (total context, tokens/s, tokens in, tokens out, etc).
-	3.5. Verify that 'thinking' renders in an expandable section inside the bubble which starts collapsed. If the model doesn't provide thinking, don\'t show it.
-	3.6. If the AI model or router supports streaming, stream the content into the bubble as it is returned.
+	3.1. ~~'Delete' bubble appears over the text.~~ — done in 7514eb5
+	3.2. ~~No 'retry' or 'edit' actions. Edit should allow the text to be modified then resubmit the whole chat.~~ — done in 93338eb
+	3.3. ~~No 'stop' action for a submitted chat.~~ — done in 8bea63e
+	3.4. ~~No 'information' icon with a tooltip that shows stats (total context, tokens/s, tokens in, tokens out, etc).~~ — done in 6905bd3
+	3.5. ~~Verify that 'thinking' renders in an expandable section inside the bubble which starts collapsed. If the model doesn't provide thinking, don't show it.~~ — done in 5bc8f00
+	3.6. ~~If the AI model or router supports streaming, stream the content into the bubble as it is returned.~~ — done in 8eb7522
 
 4. Check the "generate details" tool/function inside of the "Add Item" dialog/modal.
 
