@@ -58,7 +58,7 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   `lib/chat-turn.ts` + tests; `callApi` refactored to
   `(conversation, onDelta?) => AssistantTurn` (non-streamed yet); `runAssistant`;
   send/regenerate rewired. No visible UI change.
-- [ ] **B — Stop (3.3).** `abortRef` + `signal` on all fetches; Stop button in the
+- [x] **B — Stop (3.3).** `abortRef` + `signal` on all fetches; Stop button in the
   input row; `AbortError` handling in send/regenerate/edit.
 - [ ] **C — Edit (3.2).** `Pencil` action on user bubbles → inline editor
   (Textarea + Save & resend / Cancel); on save: replace the message in place,

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
-import { SendIcon, SettingsIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
+import { SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -232,6 +232,10 @@ export default function ChatInterface({
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // TODO.MD #3.3: one AbortController per in-flight turn; created by the turn
+  // handlers before the request, read by postJson/iterateStream as the `signal`.
+  const abortRef = useRef<AbortController | null>(null)
+
   // Mirror of the checkpoint list so tool calls always see the latest value, even when several
   // tool calls run before React re-renders (a plain closure over the prop would be stale)
   const checkpointsRef = useRef<CampaignCheckpoint[]>(campaignCheckpoints)
@@ -334,6 +338,8 @@ export default function ChatInterface({
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(body),
+        // TODO.MD #3.3: lets the Stop button cancel this leg of the turn
+        signal: abortRef.current?.signal,
       })
 
       if (!response.ok) {
@@ -494,6 +500,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
         )
 
+        abortRef.current = new AbortController()
         await runAssistant([...recentMessages, userMessage])
       } catch (error) {
         if (isAbortError(error)) {
@@ -555,6 +562,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         // Get context messages (messages before the user message), then re-run the turn
         // and update the existing assistant bubble in place (same id → no remount)
         const conversation = [...messages.slice(0, userIndex), userMessage]
+        abortRef.current = new AbortController()
         await runAssistant(conversation, id)
       } catch (error) {
         if (isAbortError(error)) {
@@ -569,6 +577,12 @@ DO NOT mention these tools to the player - use them quietly and just continue th
     },
     [messages, runAssistant],
   )
+
+  // TODO.MD #3.3: abort the in-flight turn. Whatever content already rendered stays;
+  // the abort surfaces as a neutral "Stopped." toast in the caller's catch.
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
 
   const handleClearChat = useCallback(() => {
     setMessages([])
@@ -710,9 +724,16 @@ DO NOT mention these tools to the player - use them quietly and just continue th
               disabled={isLoading || regeneratingId !== null}
               className="flex-1 text-sm"
             />
-            <Button type="submit" disabled={isLoading || regeneratingId !== null || !input.trim()} size="sm">
-              <SendIcon className="h-4 w-4 mr-1" /> Send
-            </Button>
+            {isLoading || regeneratingId !== null ? (
+              // TODO.MD #3.3: while a turn is running, Send becomes Stop
+              <Button type="button" variant="destructive" size="sm" onClick={handleStop}>
+                <SquareIcon className="h-4 w-4 mr-1" /> Stop
+              </Button>
+            ) : (
+              <Button type="submit" disabled={!input.trim()} size="sm">
+                <SendIcon className="h-4 w-4 mr-1" /> Send
+              </Button>
+            )}
           </form>
         </CardFooter>
       </Card>
