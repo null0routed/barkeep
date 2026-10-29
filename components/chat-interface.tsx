@@ -235,7 +235,7 @@ const ChatMessageComponent = memo(
             ) : isUser ? (
               message.content
             ) : (
-              <MarkdownRenderer content={message.content} />
+              <MarkdownRenderer content={message.content} thinking={message.thinking} />
             )}
           </div>
         </div>

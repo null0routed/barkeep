@@ -4,9 +4,14 @@ import { useState, useMemo, memo } from "react"
 import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
+import { splitThinkBlocks } from "@/lib/thinking"
 
 interface MarkdownRendererProps {
   content: string
+  // Structured model thinking reported by the endpoint (e.g. the `reasoning` field —
+  // TODO.MD #3.5). Rendered collapsed above the body; when the model provides none,
+  // nothing extra is shown (inline thinking tags in `content` are handled below).
+  thinking?: string
 }
 
 // Memoized ThinkBlock component to prevent re-renders
@@ -35,52 +40,6 @@ const ThinkBlock = memo(({ content }: { content: string }) => {
 })
 
 ThinkBlock.displayName = "ThinkBlock"
-
-// Helper function to process think tags
-function processThinkTags(content: string) {
-  const blocks = []
-  let currentIndex = 0
-
-  // Combined regex that matches either tag pattern
-  const combinedRegex = /<(Thinking|think)>([\s\S]*?)<\/\1>/gi
-
-  let match
-  while ((match = combinedRegex.exec(content)) !== null) {
-    // Add text before the tag
-    if (match.index > currentIndex) {
-      blocks.push({
-        type: "text",
-        content: content.substring(currentIndex, match.index),
-      })
-    }
-
-    // Add the think block (match[2] contains the content inside the tags)
-    blocks.push({
-      type: "think",
-      content: match[2].trim(),
-    })
-
-    currentIndex = match.index + match[0].length
-  }
-
-  // Add any remaining text after the last tag
-  if (currentIndex < content.length) {
-    blocks.push({
-      type: "text",
-      content: content.substring(currentIndex),
-    })
-  }
-
-  // If no tags were found, return the original content
-  if (blocks.length === 0) {
-    blocks.push({
-      type: "text",
-      content: content,
-    })
-  }
-
-  return blocks
-}
 
 // Memoized markdown components
 const MarkdownComponents = {
@@ -141,12 +100,14 @@ MarkdownComponents.li.displayName = "MarkdownLi"
 MarkdownComponents.blockquote.displayName = "MarkdownBlockquote"
 
 // Main component
-export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, thinking }: MarkdownRendererProps) {
   // Memoize the processed content to avoid recalculating on every render
-  const processedContent = useMemo(() => processThinkTags(content), [content])
+  const processedContent = useMemo(() => splitThinkBlocks(content), [content])
 
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
+      {/* Structured model thinking, when the endpoint provided it (TODO.MD #3.5) */}
+      {thinking ? <ThinkBlock content={thinking} /> : null}
       {processedContent.map((block, index) =>
         block.type === "think" ? (
           <ThinkBlock key={index} content={block.content} />

@@ -42,7 +42,7 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
     `reasoning_content` fields), `mergeUsage` (sums across the two tool-path legs),
     `buildStats` (usage + timing → TurnStats), `toAssistantTurn`, `isAbortError`,
     `statsLines` (tooltip rows).
-  - `lib/thinking.ts` — `splitThinkTags` (extracted from markdown-renderer).
+  - `lib/thinking.ts` — `splitThinkBlocks` (extracted from markdown-renderer).
   - `lib/stream.ts` — `parseDataLine`, `iterateStream` (SSE reader),
     `NonStreamableError`.
 - **Abort (3.3):** one `AbortController` per in-flight turn in an `abortRef`; both
@@ -68,10 +68,10 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   `Info` action on assistant bubbles that have `stats`, showing Context / Tokens in /
   Tokens out / Total / Speed / Duration (+ "stopped by user" when applicable);
   `TooltipProvider` around the chat area.
-- [ ] **E — Thinking (3.5).** `splitThinkTags` extracted to `lib/thinking.ts` with
-  tests; `MarkdownRenderer` gains a `thinking` prop rendered as a collapsed
+- [x] **E — Thinking (3.5).** `splitThinkBlocks` extracted to `lib/thinking.ts` with
+  tests (7); `MarkdownRenderer` gains a `thinking` prop rendered as a collapsed
   `ThinkBlock` above the content when the model provided it (hidden otherwise);
-  structured-field capture lands from Phase A.
+  structured-field capture lands from Phase A. (bundle unchanged at 119 kB / 230 kB)
 - [ ] **F — Streaming (3.6).** `lib/stream.ts` + tests; `callApi` attempts
   `stream: true`, reads SSE deltas into the in-flight bubble via `onDelta`, falls
   back to plain-JSON handling when content-type is not `text/event-stream`;
