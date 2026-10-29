@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
-import { PencilIcon, SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
+import { InfoIcon, PencilIcon, SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -38,9 +38,11 @@ import { formatNotesForContext } from "@/lib/campaign-notes"
 import {
   isAbortError,
   mergeUsage,
+  statsLines,
   toAssistantTurn,
   type AssistantTurn,
 } from "@/lib/chat-turn"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
 interface ChatInterfaceProps {
@@ -133,6 +135,32 @@ const ChatMessageComponent = memo(
             className="flex shrink-0 flex-col gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           >
             {/* TODO.MD #3.2: edit + resend, on user bubbles only */}
+            {/* TODO.MD #3.4: per-turn stats (tokens in/out, context, speed, duration) */}
+            {!isUser && message.stats && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 hover:bg-muted"
+                    title="Turn statistics"
+                    aria-label="Turn statistics"
+                  >
+                    <InfoIcon className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <div className="grid grid-cols-[max-content_max-content] gap-x-3 gap-y-0.5">
+                    {statsLines(message.stats).map((line) => (
+                      <span key={line.label} className="contents">
+                        <span className="pr-1 opacity-60">{line.label}</span>
+                        <span className="whitespace-nowrap">{line.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
             {isUser && onEdit && (
               <Button
                 variant="ghost"
@@ -730,7 +758,10 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   }, [])
 
   return (
-    <div className="flex flex-col h-full" ref={containerRef}>
+    // Radix Tooltip requires a provider ancestor; scoping it here keeps the bubble
+    // actions self-contained (settings, alerts, and dialogs do not need it)
+    <TooltipProvider delayDuration={150}>
+      <div className="flex flex-col h-full" ref={containerRef}>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold">AI Chat</h2>
         <div className="flex gap-2">
@@ -895,6 +926,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }

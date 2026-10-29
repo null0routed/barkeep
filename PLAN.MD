@@ -64,7 +64,7 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   (Textarea + Save & resend / Cancel); on save: replace the message in place,
   resubmit the whole edited conversation, append the new reply. Disabled while a
   turn is in flight.
-- [ ] **D — Stats tooltip (3.4).** `@radix-ui/react-tooltip` + `ui/tooltip.tsx`;
+- [x] **D — Stats tooltip (3.4).** (bundle +11 kB for the approved Radix tooltip) `@radix-ui/react-tooltip` + `ui/tooltip.tsx`;
   `Info` action on assistant bubbles that have `stats`, showing Context / Tokens in /
   Tokens out / Total / Speed / Duration (+ "stopped by user" when applicable);
   `TooltipProvider` around the chat area.
