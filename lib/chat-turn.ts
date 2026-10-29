@@ -20,19 +20,20 @@ export interface ApiUsage {
 }
 
 /**
- * Extract model thinking from a provider message object, when the endpoint surfaces
- * it in a structured field (Ollama reasoning models use `reasoning`, OpenRouter and
- * some gateways use `reasoning_content`). Returns undefined unless a non-empty
- * string is present (inline thinking tags are handled by the markdown renderer).
+ * Extract model thinking from a provider message object (or a streaming delta), when the
+ * endpoint surfaces it in a structured field. The provider naming varies — OpenRouter and
+ * most gateways use `reasoning`, OpenAI-style `reasoning_content`, Ollama reasoning models
+ * use `thinking`. `reasoning` wins if more than one is present. Returns undefined unless a
+ * non-empty string is found (inline thinking tags are handled by the markdown renderer).
  */
 export function extractThinking(message: unknown): string | undefined {
   if (typeof message !== "object" || message === null) return undefined
   const record = message as Record<string, unknown>
-  if (typeof record.reasoning === "string" && record.reasoning.trim().length > 0) {
-    return record.reasoning
-  }
-  if (typeof record.reasoning_content === "string" && record.reasoning_content.trim().length > 0) {
-    return record.reasoning_content
+  for (const key of ["reasoning", "reasoning_content", "thinking"]) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value
+    }
   }
   return undefined
 }

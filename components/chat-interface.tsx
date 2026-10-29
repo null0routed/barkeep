@@ -36,12 +36,20 @@ import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/
 import { resolveSystemPrompt } from "@/lib/system-prompt"
 import { formatNotesForContext } from "@/lib/campaign-notes"
 import {
+  buildStats,
+  extractThinking,
   isAbortError,
   mergeUsage,
   statsLines,
-  toAssistantTurn,
+  type ApiUsage,
   type AssistantTurn,
 } from "@/lib/chat-turn"
+import {
+  accumulateToolCalls,
+  finalizeToolCalls,
+  iterateStream,
+  type ToolCallAcc,
+} from "@/lib/stream"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
@@ -346,8 +354,8 @@ export default function ChatInterface({
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // TODO.MD #3.3: one AbortController per in-flight turn; created by the turn
-  // handlers before the request, read by postJson/iterateStream as the `signal`.
+  // TODO.MD #3.3: one AbortController per in-flight turn; created by the turn handlers
+  // before the request, and read by the leg fetches as their `signal`.
   const abortRef = useRef<AbortController | null>(null)
 
   // Mirror of the checkpoint list so tool calls always see the latest value, even when several
@@ -442,34 +450,17 @@ export default function ChatInterface({
     [character, setCampaignCheckpoints],
   )
 
-  // Thin JSON POST helper shared by all legs of a turn
-  const postJson = useCallback(
-    async (body: unknown) => {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-        // TODO.MD #3.3: lets the Stop button cancel this leg of the turn
-        signal: abortRef.current?.signal,
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      return response.json()
-    },
-    [apiUrl, apiKey],
-  )
-
   // Run one turn against the OpenAI-compatible endpoint and normalize it into an
   // AssistantTurn (content + optional model thinking + request stats — TODO.MD #3.4/#3.5).
-  // `conversation` is the full ordered history for the turn; `onDelta` is invoked with
-  // the accumulated content as it arrives (TODO.MD #3.6) — for non-streaming endpoints
-  // it is invoked exactly once, with the final content, so callers treat both paths alike.
+  // `conversation` is the full ordered history for the turn; `onDelta` is invoked with the
+  // accumulated content each time more of it arrives.
+  //
+  // Streaming (TODO.MD #3.6): each leg is requested with `stream: true`. If the endpoint
+  // answers with a `text/event-stream` body the SSE chunks are read (content streamed to
+  // onDelta as it lands, thinking/usage accumulated, tool-call fragments assembled); if it
+  // ignores `stream` and returns a single JSON document instead, that is read as the
+  // fall-back body. Both paths converge on the same per-leg result, so the two-leg tool
+  // flow below is identical either way.
   const callApi = useCallback(
     async (conversation: ChatMessage[], onDelta?: (content: string) => void): Promise<AssistantTurn> => {
       try {
@@ -505,48 +496,147 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           ...conversation.map((msg) => ({ role: msg.role, content: msg.content })),
         ]
 
-        // Call the OpenAI-compatible API with tools
-        const data = await postJson({
+        // One leg of the turn: POST (trying `stream: true`) and accumulate its answer —
+        // text content (streamed to onDelta as it lands), thinking, usage, and any tool
+        // calls — from an SSE body (preferred) or, as the fallback, a single JSON document.
+        const runLeg = async (payload: Record<string, unknown>) => {
+          const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(payload),
+            // TODO.MD #3.3: lets the Stop button cancel this leg mid-stream
+            signal: abortRef.current?.signal,
+          })
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`)
+          }
+
+          const contentType = response.headers.get("content-type") ?? ""
+          const isSse = contentType.includes("text/event-stream")
+
+          let content = ""
+          let thinking = ""
+          let usage: ApiUsage | undefined
+          const toolAcc = new Map<number, ToolCallAcc>()
+
+          // Fold provider thinking (whatever field it arrives in) into the running total.
+          const takeThinking = (value: unknown): void => {
+            const found = extractThinking(value)
+            if (found) thinking += found
+          }
+
+          if (isSse && response.body) {
+            for await (const chunk of iterateStream(response.body)) {
+              if (typeof chunk !== "object" || chunk === null) continue
+              const c = chunk as Record<string, unknown>
+              if (c.usage && typeof c.usage === "object") {
+                usage = mergeUsage(usage, c.usage as ApiUsage)
+              }
+              const choices = Array.isArray(c.choices) ? c.choices : []
+              const first = choices[0]
+              const delta =
+                first && typeof first.delta === "object" && first.delta !== null
+                  ? (first.delta as Record<string, unknown>)
+                  : undefined
+              if (!delta) continue
+              if (typeof delta.content === "string") {
+                content += delta.content
+                onDelta?.(content)
+              }
+              takeThinking(delta)
+              if (delta.tool_calls) {
+                accumulateToolCalls(toolAcc, delta.tool_calls)
+              }
+            }
+          } else {
+            // Fall-back: the endpoint ignored `stream: true` and returned one JSON document.
+            const data = (await response.json()) as Record<string, unknown>
+            if (data.usage && typeof data.usage === "object") {
+              usage = mergeUsage(usage, data.usage as ApiUsage)
+            }
+            const choices = Array.isArray(data.choices) ? data.choices : []
+            const msg =
+              choices[0] && typeof choices[0] === "object" ? (choices[0] as Record<string, unknown>) : undefined
+            const message =
+              msg && typeof msg.message === "object" && msg.message !== null
+                ? (msg.message as Record<string, unknown>)
+                : undefined
+            if (message) {
+              if (typeof message.content === "string") content = message.content
+              takeThinking(message)
+              if (Array.isArray(message.tool_calls)) {
+                ;(message.tool_calls as unknown[]).forEach((raw, index) => {
+                  const call = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {}
+                  const fn =
+                    call.function && typeof call.function === "object"
+                      ? (call.function as Record<string, unknown>)
+                      : {}
+                  toolAcc.set(index, {
+                    id: typeof call.id === "string" ? call.id : "",
+                    name: typeof fn.name === "string" ? fn.name : "",
+                    arguments: typeof fn.arguments === "string" ? fn.arguments : "",
+                  })
+                })
+              }
+            }
+            // Surface the already-complete content as a single delta so callers are uniform.
+            if (content) onDelta?.(content)
+          }
+
+          return {
+            content,
+            thinking: thinking.trim() ? thinking : undefined,
+            usage,
+            toolCalls: finalizeToolCalls(toolAcc),
+          }
+        }
+
+        // Leg one — the tool-enabled request. If it produced tool calls, run the follow-up
+        // leg with the results; otherwise the first leg is the final answer.
+        const leg1 = await runLeg({
           model: model,
           messages: apiMessages,
           tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools],
           tool_choice: "auto",
-          stream: false,
+          stream: true,
+          stream_options: { include_usage: true },
         })
 
-        const firstMessage = data?.choices?.[0]?.message
-
-        // Check if the response contains tool calls
-        if (firstMessage?.tool_calls?.length > 0) {
-          // Handle tool calls
-          const toolResults = handleToolCalls(firstMessage.tool_calls)
-
-          // Make a second API call with the tool results
-          const secondData = await postJson({
+        if (leg1.toolCalls.length > 0) {
+          const toolResults = handleToolCalls(leg1.toolCalls)
+          const firstMessage = {
+            role: "assistant",
+            content: leg1.content || null,
+            tool_calls: leg1.toolCalls,
+          }
+          const leg2 = await runLeg({
             model: model,
             messages: [...apiMessages, firstMessage, ...toolResults],
-            stream: false,
+            stream: true,
+            stream_options: { include_usage: true },
           })
-
-          const turn = toAssistantTurn(
-            secondData?.choices?.[0]?.message,
-            mergeUsage(data?.usage, secondData?.usage),
-            startedAt,
-            conversation.length,
-          )
-          onDelta?.(turn.content)
-          return turn
+          return {
+            content: leg2.content,
+            thinking: leg2.thinking,
+            stats: buildStats(mergeUsage(leg1.usage, leg2.usage), startedAt, conversation.length),
+          }
         }
 
-        const turn = toAssistantTurn(firstMessage, data?.usage, startedAt, conversation.length)
-        onDelta?.(turn.content)
-        return turn
+        return {
+          content: leg1.content,
+          thinking: leg1.thinking,
+          stats: buildStats(leg1.usage, startedAt, conversation.length),
+        }
       } catch (error) {
         console.error("Error calling API:", error)
         throw error
       }
     },
-    [postJson, model, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
+    [model, apiKey, apiUrl, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
   )
 
   // Shared turn bookkeeping: creates the assistant bubble under a stable id up front

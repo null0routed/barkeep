@@ -39,12 +39,12 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   no migration, import path unaffected.
 - **Pure helpers in `lib/` (unit-tested, node:test + tsx):**
   - `lib/chat-turn.ts` — `extractThinking` (structured `reasoning` /
-    `reasoning_content` fields), `mergeUsage` (sums across the two tool-path legs),
+    `reasoning_content` / `thinking` fields), `mergeUsage` (sums across the two tool-path legs),
     `buildStats` (usage + timing → TurnStats), `toAssistantTurn`, `isAbortError`,
     `statsLines` (tooltip rows).
   - `lib/thinking.ts` — `splitThinkBlocks` (extracted from markdown-renderer).
   - `lib/stream.ts` — `parseDataLine`, `iterateStream` (SSE reader),
-    `NonStreamableError`.
+    `accumulateToolCalls` / `finalizeToolCalls` (streamed tool-call assembly).
 - **Abort (3.3):** one `AbortController` per in-flight turn in an `abortRef`; both
   fetch legs pass it as `signal`; `Stop` button replaces Send while a turn runs;
   `AbortError` → `toast.info("Stopped.")`, partial streamed content stays rendered.
@@ -72,11 +72,11 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   tests (7); `MarkdownRenderer` gains a `thinking` prop rendered as a collapsed
   `ThinkBlock` above the content when the model provided it (hidden otherwise);
   structured-field capture lands from Phase A. (bundle unchanged at 119 kB / 230 kB)
-- [ ] **F — Streaming (3.6).** `lib/stream.ts` + tests; `callApi` attempts
+- [x] **F — Streaming (3.6).** `lib/stream.ts` + tests (13); `callApi` attempts
   `stream: true`, reads SSE deltas into the in-flight bubble via `onDelta`, falls
   back to plain-JSON handling when content-type is not `text/event-stream`;
   tool-call deltas accumulate and take the existing second leg; stats capture usage
-  from final chunk(s); Stop works mid-stream (partial kept).
+  from final chunk(s); Stop works mid-stream (partial kept). (bundle 120 kB / 231 kB)
 
 ## Definition of done
 

@@ -19,6 +19,12 @@ test("extractThinking falls back to reasoning_content (gateway style)", () => {
   assert.equal(extractThinking({ reasoning_content: "hmm" }), "hmm")
 })
 
+test("extractThinking recognizes the Ollama thinking field (lowest priority)", () => {
+  assert.equal(extractThinking({ thinking: "step by step…" }), "step by step…")
+  assert.equal(extractThinking({ reasoning: "a", thinking: "c" }), "a")
+  assert.equal(extractThinking({ reasoning_content: "b", thinking: "c" }), "b")
+})
+
 test("extractThinking prefers `reasoning` when both fields exist", () => {
   assert.equal(extractThinking({ reasoning: "a", reasoning_content: "b" }), "a")
 })
