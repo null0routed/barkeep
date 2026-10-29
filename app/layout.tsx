@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -23,6 +23,13 @@ export const metadata: Metadata = {
     ],
   },
   manifest: "/manifest.json",
+}
+
+/**
+ * themeColor belongs in the viewport export under Next 15 (in the metadata export it
+ * emits a build warning on every route) — TODO.MD #6.
+ */
+export const viewport: Viewport = {
   themeColor: "#2D1600",
 }
 

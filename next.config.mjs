@@ -6,10 +6,6 @@ const nextConfig = {
   },
   // Ensure trailing slashes for better compatibility with static hosting
   trailingSlash: true,
-  // Disable server components features that aren't compatible with static export
-  experimental: {
-    serverActions: false,
-  },
 }
 
 export default nextConfig

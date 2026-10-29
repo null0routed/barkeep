@@ -1,8 +1,8 @@
 #OPEN TASKS:#
 
-1. Verify maximum characters in the campaign notes (>15K characters allowed). This is due to the restriction of 5MB for localStorage provider in a browser.
+1. ~~Verify maximum characters in the campaign notes (>15K characters allowed). This is due to the restriction of 5MB for localStorage provider in a browser.~~ — done in ad74723
 
-2. Add red accenting to the export warning dialog.
+2. ~~Add red accenting to the export warning dialog.~~ — done in 30d9ef9
 
 3. Fix the actions for the chat bubbles:
 	3.1. ~~'Delete' bubble appears over the text.~~ — done in 7514eb5
@@ -18,6 +18,6 @@
 
 6. 'npm run build' shows several warnings - can we fix these?
 
-7. My system prompt should be injected for the AI API call, but not rendered in the chat settings dialog. A user can add their own and the app will preference that one, but mine should not render there.
+7. ~~My system prompt should be injected for the AI API call, but not rendered in the chat settings dialog. A user can add their own and the app will preference that one, but mine should not render there.~~ — done in ac1d053
 
 8. The 'Generate Details' button in Inventory and Equipment doesn\'t prompt handle the task correctly. The intent is that if a piece of equipment or an item if found and mentioned in chat, the 'Generate Details' button pulls the correct details for that specific item. The model may not have context after the fact with the 'Generate Item' button. How do we tackle this? Do we add some sort of prompt requirement that any equipment or item mentioned in the chat (e.g. loot) automatically has core details attached to the chat response? What are other options here?
