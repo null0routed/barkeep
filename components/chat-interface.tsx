@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
-import { SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
+import { PencilIcon, SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -93,11 +93,27 @@ const ChatMessageComponent = memo(
     onDelete,
     onRegenerate,
     isRegenerating,
+    onEdit,
+    isEditing,
+    editDraft,
+    onEditDraftChange,
+    onSaveEdit,
+    onCancelEdit,
+    inFlight,
   }: {
     message: ChatMessage
     onDelete: (id: string) => void
     onRegenerate?: (id: string) => void
     isRegenerating?: boolean
+    // TODO.MD #3.2 (edit)
+    onEdit?: (id: string) => void
+    isEditing?: boolean
+    editDraft?: string
+    onEditDraftChange?: (value: string) => void
+    onSaveEdit?: (id: string) => void
+    onCancelEdit?: () => void
+    // True while any turn is running or a message is in inline edit
+    inFlight?: boolean
   }) => {
     const isUser = message.role === "user"
 
@@ -116,13 +132,27 @@ const ChatMessageComponent = memo(
             aria-label="Message actions"
             className="flex shrink-0 flex-col gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           >
+            {/* TODO.MD #3.2: edit + resend, on user bubbles only */}
+            {isUser && onEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 hover:bg-muted"
+                onClick={() => onEdit(message.id)}
+                disabled={inFlight}
+                title="Edit and resend chat"
+                aria-label="Edit message"
+              >
+                <PencilIcon className="h-3 w-3" />
+              </Button>
+            )}
             {!isUser && onRegenerate && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 hover:bg-muted"
                 onClick={() => onRegenerate(message.id)}
-                disabled={isRegenerating}
+                disabled={isRegenerating || inFlight}
                 title="Regenerate response"
                 aria-label="Regenerate response"
               >
@@ -143,10 +173,42 @@ const ChatMessageComponent = memo(
 
           <div
             className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm ${
-              isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+              isUser
+                ? isEditing
+                  ? "bg-background"
+                  : "bg-primary text-primary-foreground"
+                : "bg-muted"
             }`}
           >
-            {isUser ? message.content : <MarkdownRenderer content={message.content} />}
+            {isUser && isEditing ? (
+              // TODO.MD #3.2: edit the message, then Save re-submits the whole chat
+              <div className="w-full space-y-2">
+                <Textarea
+                  value={editDraft}
+                  onChange={(e) => onEditDraftChange?.(e.target.value)}
+                  rows={Math.max(2, Math.min(8, (editDraft ?? "").split("\n").length))}
+                  className="min-h-[48px] resize-y text-sm"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" className="h-7" onClick={onCancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7"
+                    onClick={() => onSaveEdit?.(message.id)}
+                    disabled={!editDraft || !editDraft.trim()}
+                  >
+                    Save &amp; resend
+                  </Button>
+                </div>
+              </div>
+            ) : isUser ? (
+              message.content
+            ) : (
+              <MarkdownRenderer content={message.content} />
+            )}
           </div>
         </div>
       </div>
@@ -165,6 +227,13 @@ const MessageList = memo(
     onDeleteMessage,
     onRegenerateMessage,
     regeneratingId,
+    onEdit,
+    editingId,
+    editDraft,
+    onEditDraftChange,
+    onSaveEdit,
+    onCancelEdit,
+    inFlight,
   }: {
     messages: ChatMessage[]
     isLoading: boolean
@@ -172,6 +241,13 @@ const MessageList = memo(
     onDeleteMessage: (id: string) => void
     onRegenerateMessage: (id: string) => void
     regeneratingId: string | null
+    onEdit: (id: string) => void
+    editingId: string | null
+    editDraft: string
+    onEditDraftChange: (value: string) => void
+    onSaveEdit: (id: string) => void
+    onCancelEdit: () => void
+    inFlight: boolean
   }) => {
     return (
       <div className="space-y-4">
@@ -187,6 +263,13 @@ const MessageList = memo(
               onDelete={onDeleteMessage}
               onRegenerate={message.role === "assistant" ? onRegenerateMessage : undefined}
               isRegenerating={regeneratingId === message.id}
+              onEdit={message.role === "user" ? onEdit : undefined}
+              isEditing={editingId === message.id}
+              editDraft={editDraft}
+              onEditDraftChange={onEditDraftChange}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              inFlight={inFlight}
             />
           ))
         )}
@@ -227,6 +310,9 @@ export default function ChatInterface({
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
+  // TODO.MD #3.2: the user message currently in inline edit, and its draft text
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
@@ -584,6 +670,55 @@ DO NOT mention these tools to the player - use them quietly and just continue th
     abortRef.current?.abort()
   }, [])
 
+  // True while any turn is running OR a message is in inline edit — gates the
+  // per-bubble actions and the composer so turns and edits never interleave.
+  const inFlight = isLoading || regeneratingId !== null || editingId !== null
+
+  // TODO.MD #3.2 (edit): begin inline editing of a user message
+  const startEdit = useCallback(
+    (id: string) => {
+      const target = messages.find((msg) => msg.id === id)
+      if (!target || target.role !== "user") return
+      setEditingId(id)
+      setEditDraft(target.content)
+    },
+    [messages],
+  )
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null)
+    setEditDraft("")
+  }, [])
+
+  // TODO.MD #3.2 (edit): apply the draft in place, then re-submit the WHOLE chat —
+  // the edited message stays in its position, the tail is preserved (PLAN.MD
+  // decision #2) — and append the new assistant reply at the end.
+  const saveEdit = useCallback(
+    async (id: string) => {
+      if (!editDraft.trim()) return
+      const updated = messages.map((msg) => (msg.id === id ? { ...msg, content: editDraft } : msg))
+      setMessages(updated)
+      setEditingId(null)
+      setEditDraft("")
+      setIsLoading(true)
+
+      try {
+        abortRef.current = new AbortController()
+        await runAssistant(updated)
+      } catch (error) {
+        if (isAbortError(error)) {
+          toast.info("Stopped.")
+          return
+        }
+        console.error("Error re-submitting chat after edit:", error)
+        toast.error("Sorry, the edited chat could not be re-run.")
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [messages, editDraft, runAssistant, setMessages],
+  )
+
   const handleClearChat = useCallback(() => {
     setMessages([])
     setIsAlertOpen(false)
@@ -712,6 +847,13 @@ DO NOT mention these tools to the player - use them quietly and just continue th
             onDeleteMessage={handleDeleteMessage}
             onRegenerateMessage={handleRegenerateMessage}
             regeneratingId={regeneratingId}
+            onEdit={startEdit}
+            editingId={editingId}
+            editDraft={editDraft}
+            onEditDraftChange={setEditDraft}
+            onSaveEdit={saveEdit}
+            onCancelEdit={cancelEdit}
+            inFlight={inFlight}
           />
         </CardContent>
         <CardFooter className="border-t p-3 h-[56px]">
@@ -721,7 +863,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
               value={input}
               onChange={handleInputChange}
               placeholder="Type your message..."
-              disabled={isLoading || regeneratingId !== null}
+              disabled={inFlight}
               className="flex-1 text-sm"
             />
             {isLoading || regeneratingId !== null ? (
@@ -730,7 +872,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                 <SquareIcon className="h-4 w-4 mr-1" /> Stop
               </Button>
             ) : (
-              <Button type="submit" disabled={!input.trim()} size="sm">
+              <Button type="submit" disabled={!input.trim() || inFlight} size="sm">
                 <SendIcon className="h-4 w-4 mr-1" /> Send
               </Button>
             )}

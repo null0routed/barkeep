@@ -60,7 +60,7 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
   send/regenerate rewired. No visible UI change.
 - [x] **B — Stop (3.3).** `abortRef` + `signal` on all fetches; Stop button in the
   input row; `AbortError` handling in send/regenerate/edit.
-- [ ] **C — Edit (3.2).** `Pencil` action on user bubbles → inline editor
+- [x] **C — Edit (3.2).** `Pencil` action on user bubbles → inline editor
   (Textarea + Save & resend / Cancel); on save: replace the message in place,
   resubmit the whole edited conversation, append the new reply. Disabled while a
   turn is in flight.
