@@ -137,10 +137,32 @@ export interface Spell {
   prepared: boolean
 }
 
+/**
+ * Per-request statistics for one assistant turn (TODO.MD #3.4). Populated from the
+ * endpoint's `usage` block plus locally measured wall-clock time, and stored on the
+ * assistant message. Token fields are undefined when the endpoint did not report them.
+ */
+export interface TurnStats {
+  promptTokens?: number // "tokens in"
+  completionTokens?: number // "tokens out"
+  totalTokens?: number
+  contextMessages: number // how many prior messages went into context
+  elapsedMs: number
+  tokensPerSecond?: number // completionTokens / elapsed, when derivable
+  aborted?: boolean
+}
+
 export interface ChatMessage {
   id: string
   role: "user" | "assistant" | "system"
   content: string
+  // Model thinking/reasoning captured from a structured provider field (e.g. `reasoning`).
+  // Rendered as a collapsed section above the content (TODO.MD #3.5); absent when the
+  // model did not provide any (inline thinking tags render via the markdown renderer).
+  thinking?: string
+  // Per-turn request statistics, set on the assistant message when a turn completes
+  // (TODO.MD #3.4). Old saves simply lack it.
+  stats?: TurnStats
 }
 
 export interface CampaignNotes {

@@ -35,6 +35,12 @@ import { formatCharacterData } from "@/lib/format-character-data"
 import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
 import { resolveSystemPrompt } from "@/lib/system-prompt"
 import { formatNotesForContext } from "@/lib/campaign-notes"
+import {
+  isAbortError,
+  mergeUsage,
+  toAssistantTurn,
+  type AssistantTurn,
+} from "@/lib/chat-turn"
 import { toast } from "sonner"
 
 interface ChatInterfaceProps {
@@ -318,9 +324,36 @@ export default function ChatInterface({
     [character, setCampaignCheckpoints],
   )
 
+  // Thin JSON POST helper shared by all legs of a turn
+  const postJson = useCallback(
+    async (body: unknown) => {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      return response.json()
+    },
+    [apiUrl, apiKey],
+  )
+
+  // Run one turn against the OpenAI-compatible endpoint and normalize it into an
+  // AssistantTurn (content + optional model thinking + request stats — TODO.MD #3.4/#3.5).
+  // `conversation` is the full ordered history for the turn; `onDelta` is invoked with
+  // the accumulated content as it arrives (TODO.MD #3.6) — for non-streaming endpoints
+  // it is invoked exactly once, with the final content, so callers treat both paths alike.
   const callApi = useCallback(
-    async (userContent: string, contextMessages: ChatMessage[]) => {
+    async (conversation: ChatMessage[], onDelta?: (content: string) => void): Promise<AssistantTurn> => {
       try {
+        const startedAt = Date.now()
         // Prepare the system message with the header summary and tool instructions
         const toolInstructions = `
 You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
@@ -345,69 +378,98 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           }${toolInstructions}\nPlease keep this context in mind when responding.`,
         }
 
-        // Prepare the messages for the API
+        // Prepare the messages for the API — `conversation` is the full ordered
+        // history for this turn (the caller decides how far back it reaches)
         const apiMessages = [
           systemMessage,
-          ...contextMessages.map((msg) => ({ role: msg.role, content: msg.content })),
-          { role: "user", content: userContent },
+          ...conversation.map((msg) => ({ role: msg.role, content: msg.content })),
         ]
 
         // Call the OpenAI-compatible API with tools
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: apiMessages,
-            tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools],
-            tool_choice: "auto",
-            stream: false,
-          }),
+        const data = await postJson({
+          model: model,
+          messages: apiMessages,
+          tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools],
+          tool_choice: "auto",
+          stream: false,
         })
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`)
-        }
-
-        const data = await response.json()
+        const firstMessage = data?.choices?.[0]?.message
 
         // Check if the response contains tool calls
-        if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls.length > 0) {
+        if (firstMessage?.tool_calls?.length > 0) {
           // Handle tool calls
-          const toolResults = handleToolCalls(data.choices[0].message.tool_calls)
+          const toolResults = handleToolCalls(firstMessage.tool_calls)
 
           // Make a second API call with the tool results
-          const secondResponse = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: model,
-              messages: [...apiMessages, data.choices[0].message, ...toolResults],
-              stream: false,
-            }),
+          const secondData = await postJson({
+            model: model,
+            messages: [...apiMessages, firstMessage, ...toolResults],
+            stream: false,
           })
 
-          if (!secondResponse.ok) {
-            throw new Error(`API error in second call: ${secondResponse.status}`)
-          }
-
-          const secondData = await secondResponse.json()
-          return secondData.choices[0].message.content
-        } else {
-          return data.choices[0].message.content
+          const turn = toAssistantTurn(
+            secondData?.choices?.[0]?.message,
+            mergeUsage(data?.usage, secondData?.usage),
+            startedAt,
+            conversation.length,
+          )
+          onDelta?.(turn.content)
+          return turn
         }
+
+        const turn = toAssistantTurn(firstMessage, data?.usage, startedAt, conversation.length)
+        onDelta?.(turn.content)
+        return turn
       } catch (error) {
         console.error("Error calling API:", error)
         throw error
       }
     },
-    [apiKey, apiUrl, model, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
+    [postJson, model, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
+  )
+
+  // Shared turn bookkeeping: creates the assistant bubble under a stable id up front
+  // (so streaming deltas — TODO.MD #3.6 — and the final turn all land on the same
+  // bubble), then settles it with the normalized turn content, thinking, and stats.
+  // Pass an existing assistant bubble id (regenerate) to update it in place, or omit
+  // the id (send/edit) to append a new bubble.
+  const runAssistant = useCallback(
+    async (conversation: ChatMessage[], bubbleId?: string) => {
+      const id = bubbleId ?? crypto.randomUUID()
+
+      const upsertContent = (content: string) => {
+        setMessages((prev) => {
+          const index = prev.findIndex((message) => message.id === id)
+          if (index === -1) {
+            return [...prev, { id, role: "assistant" as const, content }]
+          }
+          const next = [...prev]
+          next[index] = { ...next[index], content }
+          return next
+        })
+      }
+
+      const turn = await callApi(conversation, upsertContent)
+
+      setMessages((prev) => {
+        const index = prev.findIndex((message) => message.id === id)
+        const finalMessage: ChatMessage = {
+          id,
+          role: "assistant",
+          content: turn.content,
+          thinking: turn.thinking,
+          stats: turn.stats,
+        }
+        if (index === -1) {
+          return [...prev, finalMessage]
+        }
+        const next = [...prev]
+        next[index] = finalMessage
+        return next
+      })
+    },
+    [callApi, setMessages],
   )
 
   const handleSubmit = useCallback(
@@ -432,19 +494,12 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
         )
 
-        const assistantContent = await callApi(input, recentMessages)
-
-        // Add assistant message
-        const assistantMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: assistantContent,
-        }
-        setMessages((prev) => [...prev, assistantMessage])
-
-        // Update the header summary after receiving a response
-        // This will happen automatically via the useEffect
+        await runAssistant([...recentMessages, userMessage])
       } catch (error) {
+        if (isAbortError(error)) {
+          toast.info("Stopped.")
+          return
+        }
         console.error("Error calling API:", error)
         // Ephemeral notification only — never persist error text into history, where it
         // would be replayed into model context on every subsequent request
@@ -459,7 +514,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         }
       }
     },
-    [input, messages, maxMessages, setMessages, callApi],
+    [input, messages, maxMessages, setMessages, runAssistant],
   )
 
   const handleDeleteMessage = useCallback(
@@ -497,29 +552,22 @@ DO NOT mention these tools to the player - use them quietly and just continue th
       setRegeneratingId(id)
 
       try {
-        // Get context messages (messages before the user message)
-        const contextMessages = messages.slice(0, userIndex)
-
-        // Call the API with the user message and context
-        const newContent = await callApi(userMessage.content, contextMessages)
-
-        // Update the assistant message with the new content
-        setMessages((prev) => {
-          const updated = [...prev]
-          updated[assistantIndex] = {
-            ...updated[assistantIndex],
-            content: newContent,
-            id: crypto.randomUUID(), // Update ID to force re-render
-          }
-          return updated
-        })
+        // Get context messages (messages before the user message), then re-run the turn
+        // and update the existing assistant bubble in place (same id → no remount)
+        const conversation = [...messages.slice(0, userIndex), userMessage]
+        await runAssistant(conversation, id)
       } catch (error) {
+        if (isAbortError(error)) {
+          toast.info("Stopped.")
+          return
+        }
         console.error("Error regenerating message:", error)
+        toast.error("Sorry, the response could not be regenerated.")
       } finally {
         setRegeneratingId(null)
       }
     },
-    [messages, callApi, setMessages],
+    [messages, runAssistant],
   )
 
   const handleClearChat = useCallback(() => {

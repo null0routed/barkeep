@@ -54,7 +54,7 @@ Scope: TODO.MD items 3.2 (edit), 3.3 (stop), 3.4 (stats), 3.5 (thinking), 3.6 (s
 
 ## Phases (execution order)
 
-- [ ] **A — Foundation (3.4/3.5 data path).** `TurnStats` + `ChatMessage` extensions;
+- [x] **A — Foundation (3.4/3.5 data path).** `TurnStats` + `ChatMessage` extensions;
   `lib/chat-turn.ts` + tests; `callApi` refactored to
   `(conversation, onDelta?) => AssistantTurn` (non-streamed yet); `runAssistant`;
   send/regenerate rewired. No visible UI change.
