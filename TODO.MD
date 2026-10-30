@@ -12,7 +12,7 @@
 	3.5. ~~Verify that 'thinking' renders in an expandable section inside the bubble which starts collapsed. If the model doesn't provide thinking, don't show it.~~ — done in 5bc8f00
 	3.6. ~~If the AI model or router supports streaming, stream the content into the bubble as it is returned.~~ — done in 8eb7522
 
-4. Check the "generate details" tool/function inside of the "Add Item" dialog/modal.
+4. ~~Check the "generate details" tool/function inside of the "Add Item" dialog/modal.~~ — done in 9cff453
 
 5. Update the versions of all components (React/NodeJS) in the app to latest - without breaking functionality.
 
