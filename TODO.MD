@@ -16,7 +16,7 @@
 
 5. Update the versions of all components (React/NodeJS) in the app to latest - without breaking functionality.
 
-6. 'npm run build' shows several warnings - can we fix these?
+6. ~~'npm run build' shows several warnings - can we fix these?~~ — done in a90b566
 
 7. ~~My system prompt should be injected for the AI API call, but not rendered in the chat settings dialog. A user can add their own and the app will preference that one, but mine should not render there.~~ — done in ac1d053
 
