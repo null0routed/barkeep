@@ -15,6 +15,7 @@ import type {
   Spell,
   CampaignNotes,
 } from "@/lib/types"
+import type { LootEntry } from "@/lib/loot"
 import AddItemDialog from "./add-item-dialog"
 import AddProficiencyDialog from "./add-proficiency-dialog"
 import AddTraitDialog from "./add-trait-dialog"
@@ -41,6 +42,11 @@ interface CharacterSheetProps {
   apiUrl?: string
   apiKey?: string
   model?: string
+  // "Generate Details" seeding (TODO #8, T8.2): captured loot finds; and the
+  // player's custom DM prompt ("" = built-in) — carried by the generator so the
+  // dialog's wording stays system-neutral.
+  loot: LootEntry[]
+  systemPrompt: string
   // Player's campaign notes (rendered between Spell Slots and the Inventory tabs)
   campaignNotes: CampaignNotes
   setCampaignNotes: React.Dispatch<React.SetStateAction<CampaignNotes>>
@@ -55,6 +61,8 @@ export default function CharacterSheet({
   apiUrl = "https://api.openai.com/v1/chat/completions",
   apiKey = "",
   model = "gpt-4o-mini",
+  loot,
+  systemPrompt,
   campaignNotes,
   setCampaignNotes,
   notesInContext,
@@ -260,6 +268,9 @@ export default function CharacterSheet({
         apiUrl={apiUrl}
         apiKey={apiKey}
         model={model}
+        loot={loot}
+        chatMessages={chatMessages}
+        systemPrompt={systemPrompt}
       />
 
       <AddItemDialog
@@ -270,6 +281,9 @@ export default function CharacterSheet({
         apiUrl={apiUrl}
         apiKey={apiKey}
         model={model}
+        loot={loot}
+        chatMessages={chatMessages}
+        systemPrompt={systemPrompt}
       />
 
       <AddProficiencyDialog open={isAddProficiencyOpen} onOpenChange={setIsAddProficiencyOpen} onAdd={addProficiency} />

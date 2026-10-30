@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2Icon, WandIcon } from "lucide-react"
-import type { InventoryItem, Equipment, ItemRarity } from "@/lib/types"
+import type { InventoryItem, Equipment, ItemRarity, ChatMessage } from "@/lib/types"
 import { extractItemFields } from "@/lib/item-generator"
-
-// Rarity values the dialog's Select actually offers (ItemRarity minus "unknown")
-const GENERATABLE_RARITIES = ["common", "uncommon", "rare", "very rare", "legendary", "artifact"]
+import { buildGenerationContext, buildGeneratorMessages, GENERATABLE_RARITIES } from "@/lib/item-seed"
+import type { LootEntry } from "@/lib/loot"
+import { resolveSystemPrompt } from "@/lib/system-prompt"
 
 // How long to wait for the model before giving up. 60 s on purpose (owner decision,
 // Phase B): slow endpoints — and local models (e.g. Ollama) still loading in — get
@@ -28,6 +28,13 @@ interface AddItemDialogProps {
   apiUrl?: string
   apiKey?: string
   model?: string
+  // "Generate Details" context (TODO #8, T8.2): captured loot finds and the chat
+  // history the item may have been presented through — both optional; without them
+  // the generator runs in plain canonical mode. The player's custom system prompt
+  // ("" = built-in DM prompt) carries the campaign's game system.
+  loot?: LootEntry[]
+  chatMessages?: ChatMessage[]
+  systemPrompt?: string
 }
 
 export default function AddItemDialog({
@@ -38,6 +45,9 @@ export default function AddItemDialog({
   apiUrl = "https://api.openai.com/v1/chat/completions",
   apiKey = "",
   model = "gpt-4o-mini",
+  loot = [],
+  chatMessages = [],
+  systemPrompt = "",
 }: AddItemDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -92,17 +102,19 @@ export default function AddItemDialog({
     setGenerationError(null)
 
     try {
-      // Ask for exactly the fields this dialog can show — the old "loot array +
-      // type field" shape demanded data the UI never displays (TODO.MD #4).
-      const rarityOptions = GENERATABLE_RARITIES.join(", ")
-      const quantityLine = type === "inventory" ? ',\n  "quantity": "A positive whole number — how many were found"' : ""
-      const prompt = `Provide canonical Dungeons & Dragons 5th Edition details for the item "${name}".
-Respond with a single JSON object only (no prose) with exactly these fields:
-{
-  "name": "${name}",
-  "description": "One to three sentences: what the item is, what it does, and any usage or restrictions",
-  "rarity": "One of: ${rarityOptions}"${quantityLine}
-}`
+      // Context seeding (TODO.MD #8, T8.2): exact captured-loot name match → canonical
+      // entry; close name → ranked candidates the model adjudicates; else a bounded
+      // recent-chat slice; else plain canonical details. Wording is system-NEUTRAL
+      // (owner revision 2026-10-30) — the campaign's game system arrives via its DM
+      // prompt, never a hard-coded ruleset.
+      const itemName = name.trim()
+      const context = buildGenerationContext(itemName, loot, chatMessages)
+      const { system, user } = buildGeneratorMessages({
+        name: itemName,
+        type,
+        context,
+        campaignPrompt: resolveSystemPrompt(systemPrompt),
+      })
 
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -117,13 +129,7 @@ Respond with a single JSON object only (no prose) with exactly these fields:
         },
         body: JSON.stringify({
           model: model,
-          messages: [
-            {
-              role: "system",
-              content: `You are a D&D 5e item generator. Respond only with the requested JSON object — no prose around it.`,
-            },
-            { role: "user", content: prompt },
-          ],
+          messages: [{ role: "system", content: system }, { role: "user", content: user }],
           temperature: 0.7,
         }),
       })

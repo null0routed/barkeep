@@ -535,6 +535,8 @@ export default function Home() {
             character={character}
             setCharacter={setCharacter}
             chatMessages={chatMessages}
+            loot={loot} // "Generate Details" seeding (TODO #8, T8.2)
+            systemPrompt={systemPrompt} // "" = built-in DM prompt; the campaign's game system
             apiUrl={apiUrl}
             apiKey={apiKey}
             model={model}
