@@ -16,8 +16,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Match the locally verified runtime (Node v18.x); Next 15 requires >= 18.17
-          node-version: 18
+          # Node 24 LTS (active), matching the local runtime pinned in .nvmrc;
+          # Next 16 (Phase E) requires >= 20.9.
+          node-version: 24
           cache: npm
 
       - name: Install
