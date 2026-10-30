@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon, AlertTriangleIcon } from "lucide-react"
 import Image from "next/image"
@@ -14,6 +14,8 @@ import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } fr
 import { defaultCharacter } from "@/lib/default-character"
 import { toast } from "sonner"
 import { migrateStoredSystemPrompt } from "@/lib/system-prompt"
+import { LOOT_STORAGE_KEY, mergeLoot, sanitizeStoredLoot } from "@/lib/loot"
+import type { LootEntry } from "@/lib/loot"
 import { loadCheckpoints, sanitizeCheckpoints, CHECKPOINTS_STORAGE_KEY, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
 import {
   NOTES_STORAGE_KEY,
@@ -115,6 +117,20 @@ export default function Home() {
   // Campaign status checkpoints written by the AI (persisted to localStorage by the tool itself)
   const [campaignCheckpoints, setCampaignCheckpoints] = useState<CampaignCheckpoint[]>([])
 
+  // Captured loot finds (TODO #8, T8.1): the DM's "barkeep-loot" captures, kept
+  // newest-first, capped at 25. Persisted under LOOT_STORAGE_KEY (budget-covered via
+  // APP_STORAGE_KEYS); EXCLUDED from export files — derivable from the chat history
+  // (the capture effect re-captures from imported history, so the store self-heals).
+  const [loot, setLoot] = useState<LootEntry[]>([])
+
+  // Merge new captures into the capped store (chat-interface delivers batches).
+  // Idempotent — mergeLoot dedupes — so double delivery (StrictMode, re-capture of
+  // edited messages) can never duplicate an entry.
+  const handleLootCapture = useCallback((incoming: LootEntry[]) => {
+    if (incoming.length === 0) return
+    setLoot((prev) => mergeLoot(prev, incoming))
+  }, [])
+
   // Measured current storage usage in quota bytes (TODO #1): drives the warning banner
   // from the 3.2 MB waterline up; updated after every persist and on initial load.
   const [storageBytes, setStorageBytes] = useState<number>(0)
@@ -152,6 +168,7 @@ export default function Home() {
     const savedMaxMessages = localStorage.getItem("dnd-max-messages")
     const savedNotes = localStorage.getItem(NOTES_STORAGE_KEY)
     const savedNotesContext = localStorage.getItem(NOTES_CONTEXT_KEY)
+    const savedLoot = localStorage.getItem(LOOT_STORAGE_KEY)
 
     if (savedCharacter) {
       try {
@@ -188,6 +205,13 @@ export default function Home() {
       }
     }
     if (savedNotesContext === "1") setNotesInContext(true)
+    if (savedLoot) {
+      try {
+        setLoot(sanitizeStoredLoot(JSON.parse(savedLoot)))
+      } catch (error) {
+        console.error("Failed to parse saved loot captures, starting fresh:", error)
+      }
+    }
     setCampaignCheckpoints(loadCheckpoints())
     // Baseline measurement for the storage banner (reads current on-disk values)
     setStorageBytes(measureStoredBytes(APP_STORAGE_KEYS))
@@ -210,6 +234,7 @@ export default function Home() {
     const notesJson = JSON.stringify(campaignNotes)
     const maxMessagesValue = maxMessages.toString()
     const notesContextValue = notesInContext ? "1" : "0"
+    const lootJson = JSON.stringify(loot)
 
     // Trim target #2: checkpoint store cap (oldest pruned)
     const checkpointDrop = Math.max(0, campaignCheckpoints.length - MAX_CHECKPOINTS_STORED)
@@ -225,7 +250,8 @@ export default function Home() {
       serializedBytes(model) +
       serializedBytes(systemPrompt) +
       serializedBytes(maxMessagesValue) +
-      serializedBytes(notesContextValue)
+      serializedBytes(notesContextValue) +
+      serializedBytes(lootJson)
 
     // Trim target #1: oldest chat first — only when the projected total crosses the trigger
     let chat = chatMessages
@@ -259,6 +285,7 @@ export default function Home() {
       localStorage.setItem(NOTES_STORAGE_KEY, notesJson)
       localStorage.setItem(NOTES_CONTEXT_KEY, notesContextValue)
       localStorage.setItem(CHECKPOINTS_STORAGE_KEY, checkpointsJson)
+      localStorage.setItem(LOOT_STORAGE_KEY, lootJson)
       setStorageBytes(totalBytes)
       return { ok: true, totalBytes }
     } catch (error) {
@@ -295,7 +322,7 @@ export default function Home() {
       persistStateRef.current()
     }, AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, maxMessages, campaignNotes, notesInContext])
+  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, maxMessages, campaignNotes, notesInContext, loot])
 
   // If the tab hides while a save is pending, flush it immediately — the page is still
   // alive here, so this is reliable (a save inside a beforeunload handler is not).
@@ -545,6 +572,7 @@ export default function Home() {
             setCampaignCheckpoints={setCampaignCheckpoints}
             maxMessages={maxMessages}
             setMaxMessages={setMaxMessages}
+            onLootCapture={handleLootCapture}
             character={character} // Pass character data to ChatInterface
           />
         </div>

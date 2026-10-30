@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import { splitThinkBlocks } from "@/lib/thinking"
+import { stripLootFences } from "@/lib/loot"
 
 interface MarkdownRendererProps {
   content: string
@@ -101,8 +102,10 @@ MarkdownComponents.blockquote.displayName = "MarkdownBlockquote"
 
 // Main component
 export default function MarkdownRenderer({ content, thinking }: MarkdownRendererProps) {
-  // Memoize the processed content to avoid recalculating on every render
-  const processedContent = useMemo(() => splitThinkBlocks(content), [content])
+  // Memoize the processed content to avoid recalculating on every render.
+  // barkeep-loot capture fences are stripped first (TODO #8 — the player never sees
+  // machine blocks), then thinking tags are pulled out as collapsed blocks.
+  const processedContent = useMemo(() => splitThinkBlocks(stripLootFences(content)), [content])
 
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">

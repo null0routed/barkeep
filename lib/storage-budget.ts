@@ -1,5 +1,6 @@
 import { NOTES_STORAGE_KEY, NOTES_CONTEXT_KEY } from "./campaign-notes"
 import { CHECKPOINTS_STORAGE_KEY } from "./campaign-checkpoints"
+import { LOOT_STORAGE_KEY } from "./loot"
 
 /**
  * Browser storage budget (TODO #1 — locked spec).
@@ -17,7 +18,8 @@ import { CHECKPOINTS_STORAGE_KEY } from "./campaign-checkpoints"
  * budget, the persist fails loudly (toast + export guidance) instead of silently
  * losing state. Trim order, per the locked spec: oldest chat first, oldest
  * checkpoints second, notes and the character sheet are never auto-dropped (they are
- * bounded by construction: 16,000-char notes cap, 50-checkpoint store cap).
+ * bounded by construction: 16,000-char notes cap, 50-checkpoint store cap,
+ * 25-entry loot store).
  *
  * "Bytes" follow the browser's quota accounting: UTF-16 code units × 2
  * (for typical text, 1 character = 2 bytes).
@@ -111,4 +113,5 @@ export const APP_STORAGE_KEYS = [
   NOTES_STORAGE_KEY,
   NOTES_CONTEXT_KEY,
   CHECKPOINTS_STORAGE_KEY,
+  LOOT_STORAGE_KEY,
 ]

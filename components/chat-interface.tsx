@@ -33,7 +33,9 @@ import {
 import MarkdownRenderer from "./markdown-renderer"
 import { formatCharacterData } from "@/lib/format-character-data"
 import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
-import { resolveSystemPrompt } from "@/lib/system-prompt"
+import { buildSystemMessageBase } from "@/lib/system-prompt"
+import { collectLoot } from "@/lib/loot"
+import type { LootEntry } from "@/lib/loot"
 import { formatNotesForContext } from "@/lib/campaign-notes"
 import {
   buildStats,
@@ -74,6 +76,8 @@ interface ChatInterfaceProps {
   setCampaignCheckpoints: React.Dispatch<React.SetStateAction<CampaignCheckpoint[]>>
   maxMessages: number
   setMaxMessages: React.Dispatch<React.SetStateAction<number>>
+  /** Merge loot finds captured out of assistant messages into the page-level store (TODO #8, T8.1). */
+  onLootCapture?: (entries: LootEntry[]) => void
   character: CharacterData
 }
 
@@ -339,6 +343,7 @@ export default function ChatInterface({
   setCampaignCheckpoints,
   maxMessages,
   setMaxMessages,
+  onLootCapture,
   character,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
@@ -353,6 +358,25 @@ export default function ChatInterface({
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Loot capture (TODO #8, T8.1): pull barkeep-loot fences out of assistant messages
+  // and hand them to the page-level store (state lives in app/page.tsx). Processing
+  // is keyed on id + content length so a fence that arrives incomplete mid-stream is
+  // re-parsed as the message grows; mergeLoot dedupes any double delivery
+  // (StrictMode, edited messages). On first load / import the same effect
+  // re-captures from existing history — the store self-heals, no migration needed.
+  const lootSeenRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!onLootCapture) return
+    for (const message of messages) {
+      if (message.role !== "assistant" || !message.content) continue
+      const key = message.id + "@" + message.content.length
+      if (lootSeenRef.current.has(key)) continue
+      lootSeenRef.current.add(key)
+      const found = collectLoot(message.content)
+      if (found.length > 0) onLootCapture(found)
+    }
+  }, [messages, onLootCapture])
 
   // TODO.MD #3.3: one AbortController per in-flight turn; created by the turn handlers
   // before the request, and read by the leg fetches as their `signal`.
@@ -479,8 +503,9 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
         const systemMessage = {
           role: "system",
-          // The custom prompt wins if set; otherwise the built-in DM prompt (TODO #7).
-          content: `${resolveSystemPrompt(systemPrompt)}\n\n${
+          // The custom prompt wins if set, otherwise the built-in DM prompt (TODO #7),
+          // plus the loot-capture section appended to BOTH (TODO #8 — owner decision).
+          content: `${buildSystemMessageBase(systemPrompt)}\n\n${
             notesInContext ? formatNotesForContext(campaignNotes) : ""
           }${
             campaignCheckpoints.length > 0

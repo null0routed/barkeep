@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { DEFAULT_SYSTEM_PROMPT } from "./default-prompts"
-import { isUnchangedBuiltInPrompt, migrateStoredSystemPrompt, resolveSystemPrompt } from "./system-prompt"
+import { LOOT_CAPTURE_PROMPT } from "./loot"
+import { buildSystemMessageBase, isUnchangedBuiltInPrompt, migrateStoredSystemPrompt, resolveSystemPrompt } from "./system-prompt"
 
 // ---------------------------------------------------------------------------
 // resolveSystemPrompt — what actually reaches the model
@@ -52,3 +53,24 @@ test("migrateStoredSystemPrompt: a genuine customization is preserved as the pla
   assert.equal(migrateStoredSystemPrompt(customized), customized)
   assert.equal(migrateStoredSystemPrompt("A completely different voice."), "A completely different voice.")
 })
+
+// ---------------------------------------------------------------------------
+// buildSystemMessageBase — the full model-facing prompt (TODO #7 + #8)
+// ---------------------------------------------------------------------------
+
+test("buildSystemMessageBase: the loot-capture section is appended exactly once, after a custom prompt", () => {
+  const out = buildSystemMessageBase("Grim tone only. No mercy.")
+  assert.ok(out.startsWith("Grim tone only. No mercy."))
+  assert.ok(out.endsWith(LOOT_CAPTURE_PROMPT))
+  assert.equal(out.split("Loot Capture (app-facing").length, 2) // heading exactly once
+})
+
+test("buildSystemMessageBase: a blank custom prompt resolves to the built-in prompt plus the section", () => {
+  const out = buildSystemMessageBase("   ")
+  assert.ok(out.startsWith(DEFAULT_SYSTEM_PROMPT))
+  assert.ok(out.endsWith(LOOT_CAPTURE_PROMPT))
+})
+
+test("buildSystemMessageBase: the appended section carries the block tag (schema-drift guard at the seams)", () => {
+  assert.ok(LOOT_CAPTURE_PROMPT.includes("```" + "barkeep-loot"))
+});

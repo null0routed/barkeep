@@ -1,4 +1,5 @@
 import { DEFAULT_SYSTEM_PROMPT } from "./default-prompts"
+import { LOOT_CAPTURE_PROMPT } from "./loot"
 
 /**
  * System prompt separation (TODO #7).
@@ -20,6 +21,18 @@ import { DEFAULT_SYSTEM_PROMPT } from "./default-prompts"
  */
 export function resolveSystemPrompt(userPrompt: string, builtIn: string = DEFAULT_SYSTEM_PROMPT): string {
   return userPrompt.trim() ? userPrompt : builtIn
+}
+
+/**
+ * The full base system prompt actually sent to the model (TODO #7 and TODO #8):
+ * the player's custom prompt when set (verbatim), otherwise the built-in DM prompt —
+ * with the loot-capture section appended to BOTH (owner decision 2026-10-29: capture
+ * behaves identically for built-in and custom prompts). The section is composed at
+ * request time only: it is never stored, and never rendered in any UI (the settings
+ * dialog still shows player-authored text alone, per TODO #7).
+ */
+export function buildSystemMessageBase(userPrompt: string, builtIn: string = DEFAULT_SYSTEM_PROMPT): string {
+  return resolveSystemPrompt(userPrompt, builtIn) + "\n\n" + LOOT_CAPTURE_PROMPT
 }
 
 /**
