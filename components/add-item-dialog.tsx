@@ -15,6 +15,11 @@ import { extractItemFields } from "@/lib/item-generator"
 // Rarity values the dialog's Select actually offers (ItemRarity minus "unknown")
 const GENERATABLE_RARITIES = ["common", "uncommon", "rare", "very rare", "legendary", "artifact"]
 
+// How long to wait for the model before giving up. 60 s on purpose (owner decision,
+// Phase B): slow endpoints — and local models (e.g. Ollama) still loading in — get
+// time to answer instead of a bare "aborted" error.
+const GENERATION_TIMEOUT_MS = 60_000
+
 interface AddItemDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -101,6 +106,8 @@ Respond with a single JSON object only (no prose) with exactly these fields:
 
       const response = await fetch(apiUrl, {
         method: "POST",
+        // No timeout = a hung endpoint spins the loader forever (Phase B audit gap).
+        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
         headers: {
           "Content-Type": "application/json",
           // Only send auth when a key actually exists. Keyless providers (e.g. local
@@ -148,6 +155,15 @@ Respond with a single JSON object only (no prose) with exactly these fields:
       if (type === "inventory" && fields.quantity) setQuantity(fields.quantity)
     } catch (error) {
       console.error("Error generating item:", error)
+      // A timed-out request (AbortSignal.timeout) aborts as TimeoutError/AbortError —
+      // say what happened and that the clock covers slow/local models, instead of
+      // falling through to the opaque generic message.
+      if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        setGenerationError(
+          `The AI didn't respond within ${GENERATION_TIMEOUT_MS / 1000} s — try again, or check the endpoint.`,
+        )
+        return
+      }
       // Surface the specific reason (e.g. 401/403 "key required") when we have one,
       // and fall back to a generic message only when the error is opaque.
       setGenerationError(
