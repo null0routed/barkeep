@@ -29,7 +29,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-markdown": "10.1.0",
-    "sonner": "^1.7.1",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7"
   },
