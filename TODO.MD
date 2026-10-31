@@ -21,3 +21,14 @@
 7. ~~My system prompt should be injected for the AI API call, but not rendered in the chat settings dialog. A user can add their own and the app will preference that one, but mine should not render there.~~ — done in ac1d053
 
 8. ~~The 'Generate Details' button in Inventory and Equipment doesn\'t prompt handle the task correctly. The intent is that if a piece of equipment or an item if found and mentioned in chat, the 'Generate Details' button pulls the correct details for that specific item. The model may not have context after the fact with the 'Generate Item' button. How do we tackle this? Do we add some sort of prompt requirement that any equipment or item mentioned in the chat (e.g. loot) automatically has core details attached to the chat response? What are other options here?~~ — done in 7657e25 (capture in 52c5aed)
+
+9. AI image generation to help tell the story / set the scene:
+	9.1. Optional AI chat setting for an image generation endpoint (unset = feature off).
+	9.2. A tool call for the AI to request an image for a provided scene/description, rendered in the chat.
+	9.3. Rate limiting for image generation — only on major scene and character introductions (one every x messages?).
+
+10. Replace the built-in default DM prompt with the owner's updated version (the .MD file in my downloads folder — I'll provide the directory, or paste the content in).
+
+11. All the chat bubble delete icons should show a red outline/stroke (wireframe) on hover — visual cue that delete is the destructive action.
+
+12. CI/CD pipeline: deployment to the webserver (CI already runs the gates — this adds the deploy step; target server + method + triggers TBD).
