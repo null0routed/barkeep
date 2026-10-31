@@ -14,7 +14,7 @@
 
 4. ~~Check the "generate details" tool/function inside of the "Add Item" dialog/modal.~~ — done in 9cff453
 
-5. Update the versions of all components (React/NodeJS) in the app to latest - without breaking functionality.
+5. ~~Update the versions of all components (React/NodeJS) in the app to latest - without breaking functionality.~~ — Phase E done in 4d02cba…00df283 (E1–E7: Node 24 · ESLint 10 · Next 16 · React 19.3 · Radix/lucide/sonner/tailwind-merge current · Tailwind 4.3 · TS 6.0.3 pinned — TS7 deferred via ecosystem; log in FIXES.MD)
 
 6. ~~'npm run build' shows several warnings - can we fix these?~~ — done in a90b566
 
