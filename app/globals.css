@@ -1,6 +1,50 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+/*
+ * Tailwind v4 is CSS-first: the whole v3 config now lives in this file.
+ *  - @import "tailwindcss"     — base (preflight) + components + utilities layers
+ *  - @import "tw-animate-css"  — v4 drop-in for the old `tailwindcss-animate` plugin
+ *  - @plugin "@tailwindcss/typography" — `prose` (markdown-renderer)
+ *
+ * Colors and radius are defined with `@theme inline` (so utilities inline
+ * `hsl(var(--x))`) referencing the RUNTIME CSS variables below. The actual
+ * light/dark values stay as HSL triplets in `:root` / `.dark` (next-themes
+ * `attribute="class"` toggles `.dark` on <html>), which is also what the
+ * scrollbar styles reference — so dark mode and runtime theming are unchanged.
+ */
+
+/* Class-based dark mode (was `darkMode: ["class"]` in the v3 config). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  /* shadcn theme colors → utilities like bg-background / text-muted-foreground / border-border */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  /* border-radius scale (was `theme.extend.borderRadius`) */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
 
 @layer base {
   :root {
@@ -101,13 +145,6 @@
   }
 }
 
-@media (min-width: 1024px) {
-  .lg\:flex-1 {
-    flex: 1 1 0%;
-    min-width: 0;
-  }
-}
-
 /* Ensure proper scrolling behavior */
 html,
 body {
@@ -139,4 +176,33 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/*
+ * Markdown (typography) — the app's v3 config customized how inline code and
+ * code blocks render. Re-applied here as plain rules with higher specificity
+ * than the plugin's `:where()`-wrapped selectors, so they reliably win the
+ * cascade (bg muted, normal code weight, no auto-added quotes, padded blocks).
+ */
+.prose {
+  max-width: 100%;
+}
+.prose code {
+  background-color: hsl(var(--muted));
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-weight: 400;
+}
+.prose code::before,
+.prose code::after {
+  content: "";
+}
+.prose pre {
+  background-color: hsl(var(--muted));
+  border-radius: 0.25rem;
+  padding: 0.75rem 1rem;
+}
+.prose pre code {
+  background-color: transparent;
+  padding: 0;
 }

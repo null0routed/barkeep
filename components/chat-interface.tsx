@@ -133,7 +133,11 @@ const ChatMessageComponent = memo(
 
     return (
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className={`flex items-start gap-1 group ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+        <div
+          className={`flex items-start gap-1 group ${
+            isUser ? "flex-row-reverse" : "flex-row"
+          }${isUser && isEditing ? " w-full" : ""}`}
+        >
           {/*
             Message action toolbar (TODO.MD #3.1): sits NEXT TO the bubble
             (user's right, assistant's left) and fades in on hover or keyboard
@@ -215,7 +219,11 @@ const ChatMessageComponent = memo(
             className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm ${
               isUser
                 ? isEditing
-                  ? "bg-background"
+                  ? // T5-E6: in edit mode the bubble is a full-width editor
+                  // (w-full on this div AND its row above) — without an explicit
+                  // width it sizes to content (the textarea's ~20ch intrinsic
+                  // width), which reads as a slim ~200px box.
+                  "w-full bg-background"
                   : "bg-primary text-primary-foreground"
                 : "bg-muted"
             }`}

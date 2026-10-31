@@ -38,7 +38,12 @@ export default function ExportDialog({ open, onClose, onConfirm }: ExportDialogP
     >
       <DialogContent className="sm:max-w-lg border-destructive/60">
         <DialogHeader>
-          <div className="flex items-center gap-2 -mb-2">
+          {/* Title row and description are spaced by the header's `space-y-1.5`.
+              Do NOT re-add a negative margin (-mb-*) on this row: in Tailwind v4,
+              `space-y` sets the same physical property (margin-block-end) on
+              `>:not(:last-child)`, so a negative margin would override it and pull
+              the description up underneath the title (v3 let them collapse instead). */}
+          <div className="flex items-center gap-2">
             <AlertTriangleIcon className="h-5 w-5 text-destructive" aria-hidden />
             <DialogTitle>Export save file</DialogTitle>
           </div>
