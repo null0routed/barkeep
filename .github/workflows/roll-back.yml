@@ -1,0 +1,73 @@
+name: Rollback
+
+# One-generation rollback: flip the live symlink back to the previous slot.
+#
+# The "promote" forced command is symmetric — it always points the link at the
+# currently-COLD slot. After a deploy, the COLD slot is the previous generation,
+# so "promote" IS the rollback. No new credential, no new server-side path:
+# same key, same action as deploy's promote step.
+#
+# Manual only (workflow_dispatch) and gated on the same CD Environment reviewer.
+# No third-party actions at all (no checkout needed → `permissions: {}` revokes
+# the default GITHUB_TOKEN entirely).
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why are we rolling back? (recorded in the run output)'
+        required: true
+
+concurrency:
+  group: barkeep-cd
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  rollback:
+    name: flip the live symlink back one generation
+    runs-on: ubuntu-latest
+    environment: CD Environment
+    timeout-minutes: 10
+    env:
+      CF_ACCESS_NO_BROWSER: "1"
+      CF_ACCESS_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
+      CF_ACCESS_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
+
+    steps:
+      - name: Materialize promote key + pinned host key
+        run: |
+          set -euo pipefail
+          [ -n "${BARKEEP_VPS_HOST}" ] || { echo "ERROR: BARKEEP_VPS_HOST variable is not set"; exit 1; }
+          command -v cloudflared >/dev/null 2>&1 || { echo "ERROR: cloudflared not on runner"; exit 1; }
+          KDIR="${RUNNER_TEMP}/barkeep-rollback"; mkdir -p "$KDIR"
+          printf '%s\n' "${BARKEEP_PROMOTE_SSH_KEY}" > "$KDIR/promote"
+          printf '%s\n' "${BARKEEP_SSH_KNOWN_HOSTS}" > "$KDIR/known_hosts"
+          chmod 600 "$KDIR/promote"
+          test -s "$KDIR/known_hosts"
+          echo "rollback reason: ${{ inputs.reason }}"
+
+      - name: Flip the live symlink back (promote = point at cold slot = previous gen)
+        run: |
+          set -euo pipefail
+          K="$(realpath "${RUNNER_TEMP}/barkeep-rollback")"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityFile="${K}/promote" \
+              -o UserKnownHostsFile="${K}/known_hosts" -o StrictHostKeyChecking=yes \
+              -o "ProxyCommand=cloudflared access ssh --hostname ${BARKEEP_VPS_HOST}" \
+              "barkeep@${BARKEEP_VPS_HOST}" /bin/true
+          echo "rollback: live symlink now points at the previous generation"
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          code="$(curl -fsSI https://barkeep.cloudkern.com/ | awk 'toupper($1) ~ /^HTTP/{print $2}')"
+          echo "HTTP ${code:?expected 200}"
+          curl -fsS https://barkeep.cloudkern.com/ | grep -oE '<title>[^<]*</title>' | head -n1
+
+      - name: Purge key material
+        if: always()
+        run: |
+          rm -rf "${RUNNER_TEMP}/barkeep-rollback" 2>/dev/null || true
+          shopt -s nullglob 2>/dev/null; rm -f "${HOME}/.cloudflared"/*.json 2>/dev/null || true
+          echo "purged local key material"
