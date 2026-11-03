@@ -13,7 +13,7 @@ name: Deploy
 #   * Only two third-party actions, both SHA-pinned (no floating tag).
 #
 # Secrets (all scoped to the "CD Environment" so the PR-context CI job cannot read them):
-#   BARKEEP_COLD_SSH_KEY, BARKEEP_PROMOTE_SSH_KEY          — the two private keys
+#   BARKEEP_COLD_SSH_KEY, BARKEEP_PROMOTE_SSH_KEY, BARKEEP_SMOKE_SSH_KEY — the three private keys
 #   CLOUDFLARE_ACCESS_TOKEN_ID, CLOUDFLARE_ACCESS_TOKEN_SECRET — headless Access service-token
 #   BARKEEP_SSH_KNOWN_HOSTS                                 — pinned host key(s) for BARKEEP_VPS_HOST
 # Variable:
@@ -49,6 +49,7 @@ jobs:
       BARKEEP_WEB_URL: ${{ vars.BARKEEP_WEB_URL }}
       BARKEEP_COLD_SSH_KEY: ${{ secrets.BARKEEP_COLD_SSH_KEY }}
       BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
+      BARKEEP_SMOKE_SSH_KEY: ${{ secrets.BARKEEP_SMOKE_SSH_KEY }}
       BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
       # Headless Access auth. `cloudflared access ssh` (v2026.10.7, read from its own
       # `--help`) consumes the Access service token via TUNNEL_SERVICE_TOKEN_ID/_SECRET
@@ -134,8 +135,9 @@ jobs:
           KDIR="${RUNNER_TEMP}/barkeep-keys"; mkdir -p "$KDIR"
           printf '%s\n' "${BARKEEP_COLD_SSH_KEY}"    > "$KDIR/cold"
           printf '%s\n' "${BARKEEP_PROMOTE_SSH_KEY}" > "$KDIR/promote"
+          printf '%s\n' "${BARKEEP_SMOKE_SSH_KEY}"   > "$KDIR/smoke"
           printf '%s\n' "${BARKEEP_SSH_KNOWN_HOSTS}" > "$KDIR/known_hosts"
-          chmod 600 "$KDIR/cold" "$KDIR/promote"
+          chmod 600 "$KDIR/cold" "$KDIR/promote" "$KDIR/smoke"
           test -s "$KDIR/known_hosts"
           echo "cloudflared: $(cloudflared --version 2>&1 | head -n1)"
           echo "target host: ${BARKEEP_VPS_HOST}"
@@ -164,18 +166,20 @@ jobs:
               "barkeep@${BARKEEP_VPS_HOST}" /bin/true
           echo "promote: ok (live symlink now points at the slot that held the new build)"
 
-      - name: Smoke test
+      - name: Verify live slot (origin-side, Cloudflare-independent)
         run: |
           set -euo pipefail
-          # Cloudflare challenges datacenter/bot-looking clients (cf-mitigated: challenge,
-          # "Just a moment..."). A realistic browser User-Agent is the fix (owner-verified:
-          # UA change → 200 on a normal IP). Keep this a current desktop UA string.
-          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-          ACC="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-          hdr=(-H "User-Agent: ${UA}" -H "Accept: ${ACC}" -H "Accept-Language: en-US,en;q=0.9")
-          code="$(curl -fsSI --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
-          echo "HTTP ${code:?expected 200}"
-          curl -fsS --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
+          K="$(realpath "${RUNNER_TEMP}/barkeep-keys")"
+          # Origin-side, READ-ONLY verify via the barkeep-smoke forced command: the VPS
+          # itself confirms the live link points at a slot holding the build. This replaces
+          # the public-URL curl, which Cloudflare's datacenter-IP challenge (cf-mitigated:
+          # challenge) blocks no matter what User-Agent we send. command= discards client
+          # args, so the check is entirely the fixed server-side script.
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityFile="${K}/smoke" \
+              -o UserKnownHostsFile="${K}/known_hosts" -o StrictHostKeyChecking=yes \
+              -o "ProxyCommand=cloudflared access ssh --hostname ${BARKEEP_VPS_HOST}" \
+              "barkeep@${BARKEEP_VPS_HOST}" /bin/true
+          echo "smoke: live slot verified on the origin"
 
       # ── always purge ──
       - name: Purge key + token material

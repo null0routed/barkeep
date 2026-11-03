@@ -2,14 +2,19 @@
 # deploy/vps-setup.sh — one-command provisioning of the barkeep CD target VPS.
 #
 # Makes the host a blue/green deploy target for .github/workflows/deploy.yml:
-#   1. `barkeep` system user (nologin; only two forced-command keys ever apply)
+#   1. `barkeep` system user on a REAL POSIX shell (dash) — sshd runs each forced
+#      command through the login shell, so `nologin` breaks every forced command
+#      (proven: nologin printed "This account is currently not available."). Access
+#      is still impossible without a key: authorized_keys holds ONLY the forced-
+#      command keys below, none of which grants a shell.
 #   2. /var/lib/barkeep/{blue,green} release slots
 #      (seeded from the live site on FIRST run, so generation N-1 exists for rollback)
 #   3. /var/www/<domain>/web symlink  — plus the ONE nginx change: root /var/www/<domain>/
-#   4. /usr/local/bin/barkeep-rsyncd   (forced command, COLD key:    rsync into the COLD slot only)
-#   5. /usr/local/bin/barkeep-promote  (forced command, PROMOTE key: link the live dir to the COLD slot)
-#   6. /etc/sudoers.d/barkeep          (exactly the two `ln` literals, nothing else)
-#   7. /home/barkeep/.ssh/authorized_keys (the two purpose keys, passed in via env)
+#   4. /usr/local/bin/barkeep-rsyncd   (COLD key:    rsync into the COLD slot only)
+#   5. /usr/local/bin/barkeep-promote  (PROMOTE key: link the live dir to the COLD slot)
+#   6. /usr/local/bin/barkeep-smoke    (SMOKE key:   read-only verify the live slot)
+#   7. /etc/sudoers.d/barkeep          (exactly the two `ln` literals, nothing else)
+#   8. /home/barkeep/.ssh/authorized_keys (the three purpose keys, passed in via env)
 #
 # Properties:
 #   * Idempotent — safe to re-run after a VPS move or requirement expansion.
@@ -53,17 +58,27 @@ command -v nginx  >/dev/null || fail "nginx not found"
 [ -d "$WEBROOT" ] || fail "webroot $WEBROOT does not exist — wrong host or DOMAIN"
 [ -n "${BARKEEP_COLD_PUB_KEY:-}" ]    || fail "BARKEEP_COLD_PUB_KEY is not set"
 [ -n "${BARKEEP_PROMOTE_PUB_KEY:-}" ] || fail "BARKEEP_PROMOTE_PUB_KEY is not set"
+[ -n "${BARKEEP_SMOKE_PUB_KEY:-}" ]   || fail "BARKEEP_SMOKE_PUB_KEY is not set"
 [[ "$BARKEEP_COLD_PUB_KEY"    =~ ^[[:space:]]*ssh-(ed25519|rsa|ecdsa)[[:space:]] ]] || fail "cold key: does not look like an OpenSSH public key"
 [[ "$BARKEEP_PROMOTE_PUB_KEY" =~ ^[[:space:]]*ssh-(ed25519|rsa|ecdsa)[[:space:]] ]] || fail "promote key: does not look like an OpenSSH public key"
-[ "${BARKEEP_COLD_PUB_KEY}" != "${BARKEEP_PROMOTE_PUB_KEY}" ] || fail "the two public keys must differ"
+[[ "$BARKEEP_SMOKE_PUB_KEY"   =~ ^[[:space:]]*ssh-(ed25519|rsa|ecdsa)[[:space:]] ]] || fail "smoke key: does not look like an OpenSSH public key"
+[ "${BARKEEP_COLD_PUB_KEY}" != "${BARKEEP_PROMOTE_PUB_KEY}" ]   || fail "the public keys must all differ"
+[ "${BARKEEP_COLD_PUB_KEY}" != "${BARKEEP_SMOKE_PUB_KEY}" ]     || fail "the public keys must all differ"
+[ "${BARKEEP_PROMOTE_PUB_KEY}" != "${BARKEEP_SMOKE_PUB_KEY}" ]  || fail "the public keys must all differ"
 
 # ── 1. dedicated user ───────────────────────────────────────────────────────
-step "1/8 user 'barkeep' (system, nologin)"
+# sshd runs each forced `command=` through the login shell, so barkeep MUST have a
+# real POSIX shell (not nologin) or every forced command breaks. Access stays locked:
+# authorized_keys holds only the fixed-command keys, none of which opens an interactive
+# shell (see no-pty / command= restrictions in step 8).
+REAL_SHELL="$(command -v dash 2>/dev/null || command -v sh 2>/dev/null)"
+[ -n "$REAL_SHELL" ] || fail "neither dash nor sh found — the forced commands need a real login shell"
+step "1/8 user 'barkeep' (system, real shell: $REAL_SHELL)"
 if id barkeep >/dev/null 2>&1; then
-  echo "     already present — ensuring nologin shell"
-  usermod -s "$(command -v nologin)" barkeep
+  echo "     already present — ensuring a real POSIX shell ($REAL_SHELL)"
+  usermod -s "$REAL_SHELL" barkeep
 else
-  useradd -r -s "$(command -v nologin)" barkeep
+  useradd -r -s "$REAL_SHELL" barkeep
   echo "     created"
 fi
 
@@ -165,6 +180,33 @@ esac
 exec sudo -n /usr/bin/ln -sfn "/var/lib/barkeep/$NEXT" "$LINK"
 BARKEEP_PRO
 chmod 755 /usr/local/bin/barkeep-promote
+
+cat > /usr/local/bin/barkeep-smoke <<'BARKEEP_SMOKE'
+#!/bin/sh
+# barkeep-smoke — forced command for BARKEEP_SMOKE_SSH_KEY.
+# The ONLY thing this key can do: read-only verify that the LIVE link resolves to a
+# valid build. No writes, no sudo, and sshd command= discards any client args, so no
+# host control. This is the spot a public-URL curl can't reach — the origin — so
+# Cloudflare's datacenter-IP challenge is irrelevant here.
+set -eu
+
+LINK=/var/www/barkeep.cloudkern.com/web
+[ -L "$LINK" ] || { echo "smoke: FAIL — $LINK is not a symlink"; exit 1; }
+TARGET="$(readlink -f "$LINK")"
+[ -n "$TARGET" ] && [ -d "$TARGET" ] || { echo "smoke: FAIL — $LINK does not resolve to a directory"; exit 1; }
+ACTIVE="$(basename "$TARGET")"
+
+# Canonical build markers (same contract as the workflow's "Verify artifact" step),
+# checked against the LIVE slot the link now points at:
+[ -s "$LINK/index.html" ] || { echo "smoke: FAIL — index.html missing or empty in $ACTIVE"; exit 1; }
+[ -d "$LINK/_next" ]      || { echo "smoke: FAIL — _next missing in $ACTIVE"; exit 1; }
+
+NFILES="$(find "$TARGET" -type f | wc -l | tr -d ' ')"
+echo "smoke: PASS — live slot: $ACTIVE (dir: $TARGET, files: $NFILES)"
+exit 0
+BARKEEP_SMOKE
+chmod 755 /usr/local/bin/barkeep-smoke
+
 echo "     installed"
 
 # ── 7. sudoers: exactly the two swap literals ───────────────────────────────
@@ -182,16 +224,18 @@ install -d -m 700 -o barkeep -g barkeep /home/barkeep/.ssh
 {
   echo "command=\"/usr/local/bin/barkeep-rsyncd\",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${BARKEEP_COLD_PUB_KEY}"
   echo "command=\"/usr/local/bin/barkeep-promote\",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${BARKEEP_PROMOTE_PUB_KEY}"
+  echo "command=\"/usr/local/bin/barkeep-smoke\",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${BARKEEP_SMOKE_PUB_KEY}"
 } > /home/barkeep/.ssh/authorized_keys
 chmod 600 /home/barkeep/.ssh/authorized_keys
 chown barkeep:barkeep /home/barkeep/.ssh/authorized_keys
-echo "     written (2 forced-command keys)"
+echo "     written (3 forced-command keys)"
 
 # ── report ──────────────────────────────────────────────────────────────────
 printf '\n\033[1m[setup] DONE\033[0m\n'
 echo "  active link:  $(readlink -f "$LINK" 2>/dev/null || echo MISSING)"
 echo "  blue:         $(du -sh "$BLUE" 2>/dev/null | cut -f1)  green: $(du -sh "$GREEN" 2>/dev/null | cut -f1)"
 echo "  nginx:        $(nginx -t 2>&1 | tail -1)"
+echo "  smoke:        $(sh /usr/local/bin/barkeep-smoke 2>&1 || echo "smoke: (empty or not yet deployed — OK on first run)")"
 
 echo
 echo "── next: capture the pinned host key (GitHub secret BARKEEP_SSH_KNOWN_HOSTS) ─"
@@ -222,5 +266,7 @@ cat <<'NEXT'
   2) promote + confirm the site is still 200 at https://barkeep.cloudkern.com/
        ssh -i barkeep-promote -o … barkeep@<vps-host> /bin/true
        readlink /var/www/barkeep.cloudkern.com/web          # must now be the OTHER slot
-  3) promote again → flips back; both slots still hold the identical current site
+  3) smoke — read-only verify the live slot, from the origin (Cloudflare can't challenge this)
+        ssh -i barkeep-smoke -o … barkeep@<vps-host> /bin/true   # expect "smoke: PASS — live slot: …"
+  4) promote again → flips back; both slots still hold the identical current site
 NEXT

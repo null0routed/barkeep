@@ -37,6 +37,7 @@ jobs:
       BARKEEP_VPS_HOST: ${{ vars.BARKEEP_VPS_HOST }}
       BARKEEP_WEB_URL: ${{ vars.BARKEEP_WEB_URL }}
       BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
+      BARKEEP_SMOKE_SSH_KEY: ${{ secrets.BARKEEP_SMOKE_SSH_KEY }}
       BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
       # Same headless auth fix as Deploy: v2026.10.7 reads the service token from
       # TUNNEL_SERVICE_TOKEN_ID/_SECRET (see its --help); CF_ACCESS_TOKEN_* is not used.
@@ -77,8 +78,9 @@ jobs:
           command -v cloudflared >/dev/null 2>&1 || { echo "ERROR: cloudflared not on runner"; exit 1; }
           KDIR="${RUNNER_TEMP}/barkeep-rollback"; mkdir -p "$KDIR"
           printf '%s\n' "${BARKEEP_PROMOTE_SSH_KEY}" > "$KDIR/promote"
+          printf '%s\n' "${BARKEEP_SMOKE_SSH_KEY}"   > "$KDIR/smoke"
           printf '%s\n' "${BARKEEP_SSH_KNOWN_HOSTS}" > "$KDIR/known_hosts"
-          chmod 600 "$KDIR/promote"
+          chmod 600 "$KDIR/promote" "$KDIR/smoke"
           test -s "$KDIR/known_hosts"
           echo "rollback reason: ${{ inputs.reason }}"
 
@@ -92,17 +94,18 @@ jobs:
               "barkeep@${BARKEEP_VPS_HOST}" /bin/true
           echo "rollback: live symlink now points at the previous generation"
 
-      - name: Smoke test
+      - name: Verify live slot (origin-side, Cloudflare-independent)
         run: |
           set -euo pipefail
-          # Same as Deploy: present a realistic browser User-Agent so the check is not
-          # stopped by Cloudflare's bot challenge (cf-mitigated: challenge).
-          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-          ACC="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-          hdr=(-H "User-Agent: ${UA}" -H "Accept: ${ACC}" -H "Accept-Language: en-US,en;q=0.9")
-          code="$(curl -fsSI --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
-          echo "HTTP ${code:?expected 200}"
-          curl -fsS --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
+          K="$(realpath "${RUNNER_TEMP}/barkeep-rollback")"
+          # Same as Deploy: the read-only smoke command verifies on the origin that the
+          # live link now points at the previous-generation slot holding a full build.
+          # (Replaces the public-URL curl Cloudflare's datacenter challenge would block.)
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityFile="${K}/smoke" \
+              -o UserKnownHostsFile="${K}/known_hosts" -o StrictHostKeyChecking=yes \
+              -o "ProxyCommand=cloudflared access ssh --hostname ${BARKEEP_VPS_HOST}" \
+              "barkeep@${BARKEEP_VPS_HOST}" /bin/true
+          echo "smoke: previous-generation slot verified on the origin"
 
       - name: Purge key material
         if: always()
