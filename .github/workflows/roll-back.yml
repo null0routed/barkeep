@@ -95,9 +95,14 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          code="$(curl -fsSI "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
+          # Same as Deploy: present a realistic browser User-Agent so the check is not
+          # stopped by Cloudflare's bot challenge (cf-mitigated: challenge).
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+          ACC="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          hdr=(-H "User-Agent: ${UA}" -H "Accept: ${ACC}" -H "Accept-Language: en-US,en;q=0.9")
+          code="$(curl -fsSI --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
           echo "HTTP ${code:?expected 200}"
-          curl -fsS "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
+          curl -fsS --max-time 30 "${hdr[@]}" "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
 
       - name: Purge key material
         if: always()
