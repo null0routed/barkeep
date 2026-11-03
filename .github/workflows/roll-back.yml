@@ -31,6 +31,13 @@ jobs:
     environment: CD Environment
     timeout-minutes: 10
     env:
+      # Same explicit binding as deploy.yml: a `run:` bash only sees GH vars/secrets by
+      # name when bound here, so every shell-referenced value is sourced from its true
+      # GH context below.
+      BARKEEP_VPS_HOST: ${{ vars.BARKEEP_VPS_HOST }}
+      BARKEEP_WEB_URL: ${{ vars.BARKEEP_WEB_URL }}
+      BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
+      BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
       CF_ACCESS_NO_BROWSER: "1"
       CF_ACCESS_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
       CF_ACCESS_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
@@ -40,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${BARKEEP_VPS_HOST}" ] || { echo "ERROR: BARKEEP_VPS_HOST variable is not set"; exit 1; }
+          [ -n "${BARKEEP_WEB_URL}" ] || { echo "ERROR: BARKEEP_WEB_URL variable is not set"; exit 1; }
           command -v cloudflared >/dev/null 2>&1 || { echo "ERROR: cloudflared not on runner"; exit 1; }
           KDIR="${RUNNER_TEMP}/barkeep-rollback"; mkdir -p "$KDIR"
           printf '%s\n' "${BARKEEP_PROMOTE_SSH_KEY}" > "$KDIR/promote"
@@ -61,9 +69,9 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          code="$(curl -fsSI https://barkeep.cloudkern.com/ | awk 'toupper($1) ~ /^HTTP/{print $2}')"
+          code="$(curl -fsSI "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
           echo "HTTP ${code:?expected 200}"
-          curl -fsS https://barkeep.cloudkern.com/ | grep -oE '<title>[^<]*</title>' | head -n1
+          curl -fsS "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
 
       - name: Purge key material
         if: always()

@@ -18,6 +18,7 @@ name: Deploy
 #   BARKEEP_SSH_KNOWN_HOSTS                                 — pinned host key(s) for BARKEEP_VPS_HOST
 # Variable:
 #   BARKEEP_VPS_HOST                                         — the name you SSH to (ssh.cloudkern.com)
+#   BARKEEP_WEB_URL                                          — the public site URL (https://barkeep.cloudkern.com)
 
 on:
   push:
@@ -40,9 +41,16 @@ jobs:
     environment: CD Environment           # required-reviewer gate on the whole job
     timeout-minutes: 15
     env:
-      # Headless Cloudflare Access auth (service-token ID + secret). Kept to 2 env vars,
-      # mapped from the two GitHub secrets. Cloudflare reads these when the ssh ProxyCommand
-      # spawns `cloudflared access ssh` — no browser, no interactive login.
+      # A `run:` bash shell does not see GH vars/secrets by name unless they are bound
+      # here, so EVERY value a shell command reads is sourced from its true GH context
+      # and set as a real, checkable env var. (Missing → empty → the fail-fast guard in
+      # the materialize step stops the run before anything touches production.)
+      BARKEEP_VPS_HOST: ${{ vars.BARKEEP_VPS_HOST }}
+      BARKEEP_WEB_URL: ${{ vars.BARKEEP_WEB_URL }}
+      BARKEEP_COLD_SSH_KEY: ${{ secrets.BARKEEP_COLD_SSH_KEY }}
+      BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
+      BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
+      # Headless Cloudflare Access auth (service-token ID + secret → CF_ env vars):
       CF_ACCESS_NO_BROWSER: "1"
       CF_ACCESS_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
       CF_ACCESS_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
@@ -89,6 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${BARKEEP_VPS_HOST}" ] || { echo "ERROR: BARKEEP_VPS_HOST variable is not set"; exit 1; }
+          [ -n "${BARKEEP_WEB_URL}" ] || { echo "ERROR: BARKEEP_WEB_URL variable is not set"; exit 1; }
           command -v cloudflared >/dev/null 2>&1 || { echo "ERROR: cloudflared not on runner"; exit 1; }
           command -v rsync      >/dev/null 2>&1 || { echo "ERROR: rsync not on runner"; exit 1; }
           KDIR="${RUNNER_TEMP}/barkeep-keys"; mkdir -p "$KDIR"
@@ -126,9 +135,9 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          code="$(curl -fsSI https://barkeep.cloudkern.com/ | awk 'toupper($1) ~ /^HTTP/{print $2}')"
+          code="$(curl -fsSI "${BARKEEP_WEB_URL}/" | awk 'toupper($1) ~ /^HTTP/{print $2}')"
           echo "HTTP ${code:?expected 200}"
-          curl -fsS https://barkeep.cloudkern.com/ | grep -oE '<title>[^<]*</title>' | head -n1
+          curl -fsS "${BARKEEP_WEB_URL}/" | grep -oE '<title>[^<]*</title>' | head -n1
 
       # ── always purge ──
       - name: Purge key + token material
