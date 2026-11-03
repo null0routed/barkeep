@@ -31,4 +31,4 @@
 
 11. All the chat bubble delete icons should show a red outline/stroke (wireframe) on hover — visual cue that delete is the destructive action.
 
-12. CI/CD pipeline: deployment to the webserver (CI already runs the gates — this adds the deploy step; target server + method + triggers TBD).
+12. ~~CI/CD pipeline: deployment to the webserver (CI already runs the gates — this adds the deploy step; target server + method + triggers TBD).~~ — Design A (hosted-runner + Cloudflare Access SSH + 3 forced-command keys) done in 106adf4…d36401e; Deploy + Rollback both proven end-to-end (see FIXES.MD § 2026-11-03 close-out)

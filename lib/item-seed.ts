@@ -44,8 +44,9 @@ export const GENERATABLE_RARITIES: string[] = [
 ]
 
 // Cap on how much of the campaign DM prompt enters the generator context (the
-// built-in default is ~4.1k chars; this leaves headroom for customs).
-export const GENERATOR_SYSTEM_CONTEXT_MAX = 6000
+// built-in default is ~13.4k chars as of 2026-11-03; 20000 leaves headroom for
+// long custom prompts while keeping per-call token cost bounded).
+export const GENERATOR_SYSTEM_CONTEXT_MAX = 20000
 
 // Bounded recent-chat fallback slice: whole turns only, newest first.
 export const CHAT_SLICE_MAX_MESSAGES = 6
