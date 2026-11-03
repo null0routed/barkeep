@@ -38,11 +38,37 @@ jobs:
       BARKEEP_WEB_URL: ${{ vars.BARKEEP_WEB_URL }}
       BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
       BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
+      # Same headless auth fix as Deploy: v2026.10.7 reads the service token from
+      # TUNNEL_SERVICE_TOKEN_ID/_SECRET (see its --help); CF_ACCESS_TOKEN_* is not used.
       CF_ACCESS_NO_BROWSER: "1"
-      CF_ACCESS_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
-      CF_ACCESS_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
 
     steps:
+      # ── install cloudflared: NOT preinstalled on ubuntu-latest ──
+      # Same pinned + SHA256-verified binary as Deploy: fixed release, verified
+      # before it is put on PATH, installed into a job-local dir (no sudo), exposed
+      # to the later step via GITHUB_PATH so the ProxyCommand can resolve it.
+      - name: Install cloudflared (pinned 2026.10.7, SHA256-verified)
+        run: |
+          set -euo pipefail
+          CF_VERSION="2026.10.7"
+          CF_SHA256="1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872"
+          CF_HOME="${RUNNER_TEMP}/cloudflared"
+          CF_BIN="${CF_HOME}/bin"
+          STAGE="${CF_HOME}/cloudflared"
+          mkdir -p "${CF_BIN}"
+          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 30 \
+            -o "${STAGE}" \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CF_VERSION}/cloudflared-linux-amd64"
+          echo "sha256 (expect): ${CF_SHA256}"
+          echo "sha256 (actual): $(sha256sum "${STAGE}" | cut -d' ' -f1)"
+          ( cd "${CF_HOME}" && echo "${CF_SHA256}  cloudflared" | sha256sum --strict -c - )
+          install -m 755 "${STAGE}" "${CF_BIN}/cloudflared"
+          rm -f "${STAGE}"
+          echo "${CF_BIN}" >> "${GITHUB_PATH}"
+          echo "cloudflared: $("${CF_BIN}/cloudflared" --version 2>&1 | head -n1)"
+
       - name: Materialize promote key + pinned host key
         run: |
           set -euo pipefail

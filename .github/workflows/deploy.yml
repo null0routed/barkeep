@@ -50,10 +50,14 @@ jobs:
       BARKEEP_COLD_SSH_KEY: ${{ secrets.BARKEEP_COLD_SSH_KEY }}
       BARKEEP_PROMOTE_SSH_KEY: ${{ secrets.BARKEEP_PROMOTE_SSH_KEY }}
       BARKEEP_SSH_KNOWN_HOSTS: ${{ secrets.BARKEEP_SSH_KNOWN_HOSTS }}
-      # Headless Cloudflare Access auth (service-token ID + secret → CF_ env vars):
+      # Headless Access auth. `cloudflared access ssh` (v2026.10.7, read from its own
+      # `--help`) consumes the Access service token via TUNNEL_SERVICE_TOKEN_ID/_SECRET
+      # (equivalently the --service-token-id/--service-token-secret flags). The
+      # CF_ACCESS_TOKEN_* names the secrets were previously named after are NOT
+      # referenced anywhere in the binary, so they would silently fail to auth.
       CF_ACCESS_NO_BROWSER: "1"
-      CF_ACCESS_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
-      CF_ACCESS_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_TOKEN_SECRET }}
 
     steps:
       # ── gates: identical to ci.yml; must pass before we touch production ──
@@ -65,6 +69,33 @@ jobs:
         with:
           node-version: 24 # matches .nvmrc
           cache: npm
+
+      # ── install cloudflared: NOT preinstalled on ubuntu-latest ──
+      # Fixed release + SHA256 verified BEFORE the binary is placed on PATH: no
+      # floating "latest", and an unverified binary can never reach the ssh
+      # ProxyCommand. Installed into a job-local dir (no sudo, nothing under system
+      # paths) and exposed to later steps via GITHUB_PATH. Placed before the gate
+      # build so a download/hash/network failure fails fast and cheap — the whole
+      # point for a free-tier minute budget.
+      - name: Install cloudflared (pinned 2026.10.7, SHA256-verified)
+        run: |
+          set -euo pipefail
+          CF_VERSION="2026.10.7"
+          CF_SHA256="1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872"
+          CF_HOME="${RUNNER_TEMP}/cloudflared"
+          CF_BIN="${CF_HOME}/bin"
+          STAGE="${CF_HOME}/cloudflared"
+          mkdir -p "${CF_BIN}"
+          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 30 \
+            -o "${STAGE}" \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CF_VERSION}/cloudflared-linux-amd64"
+          echo "sha256 (expect): ${CF_SHA256}"
+          echo "sha256 (actual): $(sha256sum "${STAGE}" | cut -d' ' -f1)"
+          ( cd "${CF_HOME}" && echo "${CF_SHA256}  cloudflared" | sha256sum --strict -c - )
+          install -m 755 "${STAGE}" "${CF_BIN}/cloudflared"
+          rm -f "${STAGE}"
+          echo "${CF_BIN}" >> "${GITHUB_PATH}"
+          echo "cloudflared: $("${CF_BIN}/cloudflared" --version 2>&1 | head -n1)"
 
       - name: Install
         run: npm ci
@@ -116,7 +147,8 @@ jobs:
           # The remote path is ignored server-side: barkeep-rsyncd pins destination to the
           # currently-cold slot. `--delete` makes the incoming build the exact slot contents.
           # ProxyCommand value is single-quoted so ssh keeps the spaces (matches the proven
-          # manual form). CF_ACCESS_TOKEN_ID/SECRET come from the job env (headless auth).
+          # manual form). The Access service token (TUNNEL_SERVICE_TOKEN_ID/_SECRET) comes
+          # from the job env, which cloudflared access ssh reads for headless auth.
           rsync -az --delete --numeric-ids \
             -e "ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityFile=${K}/cold -o UserKnownHostsFile=${K}/known_hosts -o StrictHostKeyChecking=yes -o ProxyCommand='cloudflared access ssh --hostname ${BARKEEP_VPS_HOST}'" \
             out/ "barkeep@${BARKEEP_VPS_HOST}/"
