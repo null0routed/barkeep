@@ -40,6 +40,26 @@
 
 set -euo pipefail
 
+# ── version ─────────────────────────────────────────────────────────────────
+# Bump on every change to this script:
+#   Patch  (X.Y.0 → X.Y.N):   bug fixes, no behavioural change
+#   Minor  (X.Y.0 → (X.Y+1).0): new forced command, new key, new feature
+#   Major  (X.Y.0 → (X+1).0.0):  breaking change to forced-command behaviour
+BARKEEP_CD_VERSION="1.0.0"
+VERSION_FILE="/etc/barkeep-cd-version"
+
+# ── version delta check ────────────────────────────────────────────────────
+if [ -f "$VERSION_FILE" ]; then
+  PREVIOUS="$(awk -F= '/^version=/{print $2}' "$VERSION_FILE" 2>/dev/null || true)"
+  if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" = "$BARKEEP_CD_VERSION" ]; then
+    printf '\033[36m[setup] barkeep-cd v%s — already up to date (re-run to refresh scripts and keys)\033[0m\n' "$BARKEEP_CD_VERSION"
+  else
+    printf '\033[36m[setup] barkeep-cd v%s — upgrading from v%s\033[0m\n' "$BARKEEP_CD_VERSION" "${PREVIOUS:-(unknown)}"
+  fi
+else
+  printf '\033[36m[setup] barkeep-cd v%s — first install\033[0m\n' "$BARKEEP_CD_VERSION"
+fi
+
 DOMAIN="${DOMAIN:-barkeep.cloudkern.com}"
 SSHPORT="${SSHPORT:-22}"
 WEBROOT="/var/www/${DOMAIN}"
@@ -240,6 +260,11 @@ echo "  active link:  $(readlink -f "$LINK" 2>/dev/null || echo MISSING)"
 echo "  blue:         $(du -sh "$BLUE" 2>/dev/null | cut -f1)  green: $(du -sh "$GREEN" 2>/dev/null | cut -f1)"
 echo "  nginx:        $(nginx -t 2>&1 | tail -1)"
 echo "  smoke:        $(sh /usr/local/bin/barkeep-smoke 2>&1 || echo "smoke: (empty or not yet deployed — OK on first run)")"
+
+# ── version record ──────────────────────────────────────────────────────────
+INSTALLED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u)"
+printf 'version=%s\ninstalled_at=%s\n' "$BARKEEP_CD_VERSION" "$INSTALLED_AT" > "$VERSION_FILE"
+echo "  version:      $BARKEEP_CD_VERSION  (recorded in $VERSION_FILE)"
 
 echo
 echo "── next: capture the pinned host key (GitHub secret BARKEEP_SSH_KNOWN_HOSTS) ─"
