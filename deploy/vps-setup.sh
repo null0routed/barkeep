@@ -142,7 +142,7 @@ else
 fi
 
 # ── 6. forced-command scripts (the canonical ones; re-run = refresh) ────────
-step "6/8 /usr/local/bin/barkeep-{rsyncd,promote}"
+step "6/8 /usr/local/bin/barkeep-{rsyncd,promote,smoke}"
 cat > /usr/local/bin/barkeep-rsyncd <<'BARKEEP_RS'
 #!/bin/sh
 # barkeep-rsyncd — forced command for BARKEEP_COLD_SSH_KEY.
@@ -156,11 +156,15 @@ case "$ACTIVE" in
   blue)  COLD=green ;;
   *) exit 1 ;;
 esac
-# NOTE: canonical receiver line — `--server` (not `--daemon`: the two are
-# mutually exclusive and their combination is rejected at rsync arg-parse),
-# `-az` matches the client's compression bits, `--delete` makes the incoming
-# build the EXACT slot contents (no stale files survive), path is absolute.
-exec /usr/bin/rsync --server -az --delete . "/var/lib/barkeep/$COLD"
+# NOTE: canonical PUSH receiver line. `--server` activates protocol mode
+# (rsync reads the file list + data from the SSH channel on stdin).
+# `--receiver` is NOT a valid rsync option (confirmed: rejected by rsync 3.2.7)
+# — the mode (send vs receive) is determined by the client's protocol stream,
+# not by a server-side flag.
+# One path argument = the root destination for all received files.
+# `-az` matches the client; `--delete` makes the incoming build exact slot contents;
+# `--numeric-ids` matches the client.
+exec /usr/bin/rsync --server -az --delete --numeric-ids "/var/lib/barkeep/$COLD"
 BARKEEP_RS
 chmod 755 /usr/local/bin/barkeep-rsyncd
 

@@ -153,7 +153,7 @@ jobs:
           # from the job env, which cloudflared access ssh reads for headless auth.
           rsync -az --delete --numeric-ids \
             -e "ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityFile=${K}/cold -o UserKnownHostsFile=${K}/known_hosts -o StrictHostKeyChecking=yes -o ProxyCommand='cloudflared access ssh --hostname ${BARKEEP_VPS_HOST}'" \
-            out/ "barkeep@${BARKEEP_VPS_HOST}/"
+            out/ "barkeep@${BARKEEP_VPS_HOST}:"
           echo "rsync: ok (build is now the entire COLD slot)"
 
       - name: Promote (server flips live symlink to the cold slot)
