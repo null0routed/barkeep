@@ -9,7 +9,17 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
-import { InfoIcon, PencilIcon, SendIcon, SettingsIcon, SquareIcon, TrashIcon, RefreshCwIcon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  PencilIcon,
+  SendIcon,
+  SettingsIcon,
+  SquareIcon,
+  TrashIcon,
+  RefreshCwIcon,
+} from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -31,12 +41,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import MarkdownRenderer from "./markdown-renderer"
+import MessageImageRender from "./message-image-render"
 import { formatCharacterData } from "@/lib/format-character-data"
 import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
 import { buildSystemMessageBase } from "@/lib/system-prompt"
 import { collectLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
 import { formatNotesForContext } from "@/lib/campaign-notes"
+import {
+  clampImageRate,
+  MIN_IMAGE_RATE,
+  MAX_IMAGE_RATE,
+  imageTool,
+  IMAGE_TOOL_NAME,
+  generateImage,
+  createImageRateLimiter,
+  type ImageRateLimiter,
+} from "@/lib/image-gen"
+import { putImage, deleteImage, clearImages } from "@/lib/image-store"
 import {
   buildStats,
   extractThinking,
@@ -50,6 +72,7 @@ import {
   accumulateToolCalls,
   finalizeToolCalls,
   iterateStream,
+  parseToolArgs,
   type ToolCallAcc,
 } from "@/lib/stream"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -64,6 +87,18 @@ interface ChatInterfaceProps {
   setApiKey: React.Dispatch<React.SetStateAction<string>>
   model: string
   setModel: React.Dispatch<React.SetStateAction<string>>
+  // Image generation (TODO #9) — optional; blank api-url disables the feature.
+  imageApiUrl: string
+  setImageApiUrl: React.Dispatch<React.SetStateAction<string>>
+  // Optional dedicated key for the image endpoint; blank = reuse the chat API key.
+  imageApiKey: string
+  setImageApiKey: React.Dispatch<React.SetStateAction<string>>
+  imageModel: string
+  setImageModel: React.Dispatch<React.SetStateAction<string>>
+  imageRate: number
+  setImageRate: React.Dispatch<React.SetStateAction<number>>
+  imageSize: string
+  setImageSize: React.Dispatch<React.SetStateAction<string>>
   // Player-authored CUSTOM system prompt only. "" means "use the built-in DM prompt" —
   // the resolution to the actual model-facing prompt happens in callApi (TODO #7), and
   // the built-in text itself is never rendered in the settings dialog.
@@ -98,6 +133,22 @@ const CHARACTER_SHEET_TOOL = {
       required: [],
     },
   },
+}
+
+// One tool-result message handed back to the API (the shape the getCharacterSheet and
+// checkpoint tools already build at their call sites).
+type ToolResultMessage = {
+  tool_call_id: string
+  role: "tool"
+  name: string
+  content: string
+}
+
+// The outcome of executing a batch of tool calls (TODO.MD #9): the per-call results to
+// feed the follow-up leg, plus the optional scene image to attach to the completed turn.
+type ToolCallOutcome = {
+  results: ToolResultMessage[]
+  image?: { id: string; alt: string; src?: string }
 }
 
 // Memoized message component to prevent re-rendering all messages when typing
@@ -255,7 +306,16 @@ const ChatMessageComponent = memo(
             ) : isUser ? (
               message.content
             ) : (
-              <MarkdownRenderer content={message.content} thinking={message.thinking} />
+              <>
+                {/* Scene image (TODO.MD #9.2): centered at the top of the bubble, above
+                    the narration. Renders a 720p thumbnail + full-size lightbox. */}
+                {message.image && (
+                  <div className="mb-2">
+                    <MessageImageRender id={message.image.id} alt={message.image.alt} />
+                  </div>
+                )}
+                <MarkdownRenderer content={message.content} thinking={message.thinking} />
+              </>
             )}
           </div>
         </div>
@@ -343,6 +403,16 @@ export default function ChatInterface({
   setApiKey,
   model,
   setModel,
+  imageApiUrl,
+  setImageApiUrl,
+  imageApiKey,
+  setImageApiKey,
+  imageModel,
+  setImageModel,
+  imageRate,
+  setImageRate,
+  imageSize,
+  setImageSize,
   systemPrompt,
   setSystemPrompt,
   campaignNotes,
@@ -358,6 +428,9 @@ export default function ChatInterface({
   const [isLoading, setIsLoading] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
+  // Settings dialog: the image-generation block is an expandable section that starts
+  // collapsed (owner 2026-11-05) so the dialog stays focused on the chat settings.
+  const [imageSettingsOpen, setImageSettingsOpen] = useState(false)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   // TODO.MD #3.2: the user message currently in inline edit, and its draft text
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -397,6 +470,22 @@ export default function ChatInterface({
     checkpointsRef.current = campaignCheckpoints
   }, [campaignCheckpoints])
 
+  // Total message count, mirrored so the image rate limiter (which keys on the running
+  // conversation length, not the trimmed window passed to callApi) sees the live value.
+  const messagesCountRef = useRef(messages.length)
+  useEffect(() => {
+    messagesCountRef.current = messages.length
+  }, [messages])
+
+  // Image rate limiter (TODO.MD #9.3, owner D3): allows one generated image per
+  // imageRate messages. Recreated when the setting changes so the new window applies
+  // immediately (and a deliberate reset is allowed); in-memory only — a reload starts
+  // a fresh window, by design.
+  const imageRateLimiterRef = useRef(createImageRateLimiter(imageRate))
+  useEffect(() => {
+    imageRateLimiterRef.current = createImageRateLimiter(imageRate)
+  }, [imageRate])
+
   // Calculate and set the chat height based on window size
   const updateChatHeight = useCallback(() => {
     if (containerRef.current) {
@@ -429,10 +518,14 @@ export default function ChatInterface({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // Function to handle tool calls (character sheet + campaign checkpoints)
+  // Function to handle tool calls (character sheet + campaign checkpoints + scene image).
+  // Async because the generateImage tool performs a network call and an IndexedDB write
+  // (TODO.MD #9.2). Returns the per-call results for the follow-up leg plus the optional
+  // scene image to attach to the completed turn (at most one — the first that succeeds).
   const handleToolCalls = useCallback(
-    (toolCalls: any[]) => {
-      const results = []
+    async (toolCalls: any[]): Promise<ToolCallOutcome> => {
+      const results: ToolResultMessage[] = []
+      let image: ToolCallOutcome["image"]
       let workingCheckpoints = checkpointsRef.current
 
       for (const toolCall of toolCalls) {
@@ -447,6 +540,86 @@ export default function ChatInterface({
             name: "getCharacterSheet",
             content: formattedCharacterData,
           })
+          continue
+        }
+
+        // Scene image (TODO.MD #9.2): rate-limited, then generated and persisted to
+        // IndexedDB. Any failure (rate limit, no IDB, over-cap, API error) degrades to a
+        // "describe it in words" instruction so the turn always completes.
+        if (toolName === IMAGE_TOOL_NAME) {
+          const args = parseToolArgs(toolCall.function.arguments)
+          const prompt = typeof args.prompt === "string" ? args.prompt.trim() : ""
+          const alt = typeof args.alt === "string" && args.alt.trim() ? args.alt.trim() : prompt || "Generated scene"
+
+          const messageCount = messagesCountRef.current
+          if (!imageRateLimiterRef.current.can(messageCount)) {
+            results.push({
+              tool_call_id: toolCall.id,
+              role: "tool",
+              name: toolName,
+              content:
+                "Image generation is rate-limited right now (too soon since the last image). " +
+                "Do not request another; instead describe this scene, character, or moment in " +
+                "vivid written narration and continue the story.",
+            })
+            continue
+          }
+
+          try {
+            if (!prompt) {
+              throw new Error("missing prompt")
+            }
+            const generated = await generateImage(
+              {
+                apiUrl: imageApiUrl,
+                // A dedicated image key wins when set; otherwise fall back to the chat key
+                // (most single-provider setups need only one key).
+                apiKey: imageApiKey.trim() ? imageApiKey.trim() : apiKey || undefined,
+                model: imageModel || undefined,
+                size: imageSize,
+                signal: abortRef.current?.signal,
+              },
+              prompt,
+            )
+            const id = crypto.randomUUID()
+            const stored = await putImage({ id, alt, src: generated.src, mime: generated.mime })
+            if (!stored.ok) {
+              // Could not persist (no IDB, private browsing, or over the per-image cap):
+              // ask the model to carry the scene in words instead of leaving an empty bubble.
+              results.push({
+                tool_call_id: toolCall.id,
+                role: "tool",
+                name: toolName,
+                content:
+                  `The generated image could not be stored (${stored.reason ?? "unknown reason"}). ` +
+                  "Describe this scene in words instead and continue the story.",
+              })
+              continue
+            }
+            // Remember the image for the turn and record the rate-limit anchor.
+            image = { id, alt, src: generated.src }
+            imageRateLimiterRef.current.mark(messageCount)
+            results.push({
+              tool_call_id: toolCall.id,
+              role: "tool",
+              name: toolName,
+              content:
+                `Scene image generated and shown to the player (alt: "${alt}"). ` +
+                "The player can see it, so do not re-describe it in detail — continue the story.",
+            })
+          } catch (error) {
+            // A user-initiated abort must surface as an error (the caller shows "Stopped.");
+            // any other failure degrades to written narration.
+            if (isAbortError(error)) throw error
+            results.push({
+              tool_call_id: toolCall.id,
+              role: "tool",
+              name: toolName,
+              content:
+                "Image generation failed this time. Describe this scene, character, or moment in " +
+                "words and continue the story.",
+            })
+          }
           continue
         }
 
@@ -477,9 +650,9 @@ export default function ChatInterface({
         setCampaignCheckpoints(workingCheckpoints)
       }
 
-      return results
+      return { results, image }
     },
-    [character, setCampaignCheckpoints],
+    [character, setCampaignCheckpoints, imageApiUrl, apiKey, imageApiKey, imageModel, imageSize],
   )
 
   // Run one turn against the OpenAI-compatible endpoint and normalize it into an
@@ -509,6 +682,15 @@ You also have two tools for long-term campaign memory, because older chat messag
 DO NOT mention these tools to the player - use them quietly and just continue the story.
 `
 
+        // Scene image (TODO.MD #9): the generateImage tool and its guidance are only
+        // advertised when the owner has configured an image endpoint — blank means the
+        // feature is entirely off (no tool, no instruction, no cost).
+        const imageEnabled = imageApiUrl.trim().length > 0
+        const imageInstructions = imageEnabled
+          ? `\nYou can depict major moments with the ${IMAGE_TOOL_NAME} tool. For a significant scene change, arriving in a new location, or the introduction of an important character, you MAY generate one image to set the scene. Use it sparingly — only for these major moments — because it is rate-limited; for everything else rely on your written narration. When the tool confirms the image was shown, trust that the player can see it: continue the story rather than re-describing it.
+`
+          : ""
+
         const systemMessage = {
           role: "system",
           // The custom prompt wins if set, otherwise the built-in DM prompt (TODO #7),
@@ -519,7 +701,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
             campaignCheckpoints.length > 0
               ? `CAMPAIGN CONTEXT (from the latest saved checkpoint):\n${formatCheckpoint(campaignCheckpoints[campaignCheckpoints.length - 1])}\n\n`
               : ""
-          }${toolInstructions}\nPlease keep this context in mind when responding.`,
+          }${toolInstructions}${imageInstructions}\nPlease keep this context in mind when responding.`,
         }
 
         // Prepare the messages for the API — `conversation` is the full ordered
@@ -633,14 +815,17 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         const leg1 = await runLeg({
           model: model,
           messages: apiMessages,
-          tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools],
+          tools: [CHARACTER_SHEET_TOOL, ...campaignCheckpointTools, ...(imageEnabled ? [imageTool] : [])],
           tool_choice: "auto",
           stream: true,
           stream_options: { include_usage: true },
         })
 
         if (leg1.toolCalls.length > 0) {
-          const toolResults = handleToolCalls(leg1.toolCalls)
+          // handleToolCalls is async (the generateImage tool performs a network call and an
+          // IndexedDB write). It returns the per-call results for the follow-up leg plus the
+          // optional scene image to attach to the completed turn.
+          const { results: toolResults, image } = await handleToolCalls(leg1.toolCalls)
           const firstMessage = {
             role: "assistant",
             content: leg1.content || null,
@@ -656,6 +841,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
             content: leg2.content,
             thinking: leg2.thinking,
             stats: buildStats(mergeUsage(leg1.usage, leg2.usage), startedAt, conversation.length),
+            ...(image ? { image } : {}),
           }
         }
 
@@ -669,7 +855,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         throw error
       }
     },
-    [model, apiKey, apiUrl, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
+    [model, apiKey, apiUrl, imageApiUrl, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
   )
 
   // Shared turn bookkeeping: creates the assistant bubble under a stable id up front
@@ -703,6 +889,10 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           content: turn.content,
           thinking: turn.thinking,
           stats: turn.stats,
+          // Persist only the small IndexedDB reference (id + alt) — the image bytes live in
+          // IndexedDB (lib/image-store.ts) and are fetched by the renderer on demand.
+          // Undefined (a non-image turn) serializes to nothing, keeping the record tiny.
+          image: turn.image ? { id: turn.image.id, alt: turn.image.alt } : undefined,
         }
         if (index === -1) {
           return [...prev, finalMessage]
@@ -763,6 +953,11 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
   const handleDeleteMessage = useCallback(
     (id: string) => {
+      // Free the IndexedDB blob behind the deleted message (TODO.MD #9.2). deleteImage is
+      // fire-and-forget and never throws, so a pending store write can't block the removal.
+      const target = messages.find((msg) => msg.id === id)
+      if (target?.image?.id) void deleteImage(target.image.id)
+
       setMessages((prev) => {
         // Find the index of the message to delete
         const index = prev.findIndex((msg) => msg.id === id)
@@ -774,7 +969,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         return newMessages
       })
     },
-    [setMessages],
+    [messages, setMessages],
   )
 
   const handleRegenerateMessage = useCallback(
@@ -871,6 +1066,11 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   )
 
   const handleClearChat = useCallback(() => {
+    // Free every stored scene image and reset the image rate limiter — the conversation is
+    // gone, so the next message starts a fresh window (TODO.MD #9.2/#9.3).
+    void clearImages()
+    imageRateLimiterRef.current.reset()
+    messagesCountRef.current = 0
     setMessages([])
     setIsAlertOpen(false)
   }, [setMessages])
@@ -964,6 +1164,96 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                   </p>
                 </div>
               </div>
+
+              {/* Image generation (optional) — TODO.MD #9; expandable section, starts collapsed */}
+              <div className="rounded-md border">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 p-3 text-left"
+                  onClick={() => setImageSettingsOpen((open) => !open)}
+                  aria-expanded={imageSettingsOpen}
+                >
+                  {imageSettingsOpen ? (
+                    <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">Image generation (optional)</span>
+                  <span
+                    className={`ml-auto rounded-full px-2 py-0.5 text-xs ${
+                      imageApiUrl.trim()
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {imageApiUrl.trim() ? "On" : "Off"}
+                  </span>
+                </button>
+                {imageSettingsOpen && (
+                  <div className="space-y-3 border-t p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Ask the Dungeon Master to depict major scenes and character introductions.
+                      Leave the endpoint URL blank to turn this off entirely.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="image-api-url">Image endpoint</Label>
+                      <Input
+                        id="image-api-url"
+                        value={imageApiUrl}
+                        onChange={(e) => setImageApiUrl(e.target.value)}
+                        placeholder="e.g. https://api.openai.com/v1/images/generations"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="image-api-key">Image API key (optional)</Label>
+                      <Input
+                        id="image-api-key"
+                        type="password"
+                        value={imageApiKey}
+                        onChange={(e) => setImageApiKey(e.target.value)}
+                        placeholder="Only if the image endpoint uses a different key — the chat key is used otherwise"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="image-model">Image model (optional)</Label>
+                      <Input
+                        id="image-model"
+                        value={imageModel}
+                        onChange={(e) => setImageModel(e.target.value)}
+                        placeholder="e.g. gpt-image-1, flux-1-schnell — leave blank for the provider default"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="image-rate">Min messages between images</Label>
+                        <Input
+                          id="image-rate"
+                          type="number"
+                          value={imageRate}
+                          onChange={(e) => setImageRate(clampImageRate(Number.parseInt(e.target.value)))}
+                          min={MIN_IMAGE_RATE}
+                          max={MAX_IMAGE_RATE}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          At least this many messages must pass between image requests (1-{MAX_IMAGE_RATE}).
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="image-size">Image size</Label>
+                        <Input
+                          id="image-size"
+                          value={imageSize}
+                          onChange={(e) => setImageSize(e.target.value)}
+                          placeholder="1280x720"
+                          title="Fixed render size (width x height) — e.g. 1280x720, 1024x1024, 1536x1024"
+                        />
+                        <p className="text-xs text-muted-foreground">Requested render size; 720p (1280x720) is a good default.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="custom-system-prompt">Custom System Prompt</Label>
                 <Textarea

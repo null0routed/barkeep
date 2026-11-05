@@ -95,6 +95,25 @@ export function finalizeToolCalls(acc: Map<number, ToolCallAcc>): StreamedToolCa
 }
 
 /**
+ * Parse a tool call's `function.arguments` (a JSON string in the OpenAI shape, or an already
+ * parsed object from some proxies) into a plain object. Returns `{}` for any value that does
+ * not resolve to an object — it never throws, so malformed model output degrades safely
+ * (TODO.MD #9.2: reading the `prompt`/`alt` args of generateImage).
+ */
+export function parseToolArgs(raw: unknown): Record<string, unknown> {
+  if (typeof raw === "object" && raw !== null) return raw as Record<string, unknown>
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
+/**
  * Read an OpenAI-compatible `text/event-stream` body and yield each parsed JSON chunk
  * (TODO.MD #3.6). Stops at the `data: [DONE]` sentinel. The reader is released on
  * completion; if the underlying fetch is aborted, `reader.read()` rejects with an

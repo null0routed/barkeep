@@ -6,6 +6,7 @@ import {
   finalizeToolCalls,
   iterateStream,
   parseDataLine,
+  parseToolArgs,
   type SseLine,
   type ToolCallAcc,
 } from "./stream"
@@ -165,4 +166,32 @@ test("iterateStream yields nothing for an empty body", async () => {
     },
   })
   assert.deepEqual(await collect(body), [])
+})
+
+// ---------------------------------------------------------------------------
+// parseToolArgs (TODO.MD #9.2 — reading the generateImage prompt/alt)
+// ---------------------------------------------------------------------------
+
+test("parseToolArgs parses a JSON arguments string", () => {
+  assert.deepEqual(parseToolArgs('{"prompt":"a tavern","alt":"The tavern"}'), {
+    prompt: "a tavern",
+    alt: "The tavern",
+  })
+})
+
+test("parseToolArgs passes through an already-parsed object", () => {
+  assert.deepEqual(parseToolArgs({ prompt: "a forest" }), { prompt: "a forest" })
+})
+
+test("parseToolArgs returns {} for malformed JSON (never throws)", () => {
+  assert.deepEqual(parseToolArgs("{not json"), {})
+  assert.deepEqual(parseToolArgs(""), {})
+})
+
+test("parseToolArgs returns {} for non-object values", () => {
+  assert.deepEqual(parseToolArgs(null), {})
+  assert.deepEqual(parseToolArgs(42), {})
+  assert.deepEqual(parseToolArgs("just a string"), {})
+  assert.deepEqual(parseToolArgs('"quoted"'), {}) // valid JSON but not an object
+  assert.deepEqual(parseToolArgs(undefined), {})
 })

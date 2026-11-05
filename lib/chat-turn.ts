@@ -10,6 +10,16 @@ export interface AssistantTurn {
   /** Model thinking text, when the provider surfaced it (undefined otherwise). */
   thinking?: string
   stats: TurnStats
+  /**
+   * Session-only reference to a scene image produced by the `generateImage` tool
+   * (TODO.MD #9). `src` is the immediate render source for the browser (a data:
+   * URL or http URL); `id` + `alt` become what is persisted on the `ChatMessage`.
+   * Absent when the turn did not generate an image.
+   *
+   * `src` is NOT persisted — the ChatMessage keeps only `{ id, alt }`, and the
+   * renderer fetches `<img src>` from IndexedDB by `id` after a reload.
+   */
+  image?: { id: string; alt: string; src?: string }
 }
 
 /** The OpenAI-compatible `usage` block, as reported by endpoints. */

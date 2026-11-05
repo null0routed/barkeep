@@ -37,8 +37,13 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/png",
         purpose: "any",
       },
+      // Same file re-declared as the maskable candidate (Next's Manifest type only
+      // accepts one purpose per entry, so "any maskable" becomes two entries).
+      // Full-bleed background + subject inside the 80% safe zone, so launchers that
+      // circle-crop install icons get a clean icon — replaces the old 710x695 / 1.98 MB
+      // barkeep-logo.png, which was clip-prone with transparent corners.
       {
-        src: "/barkeep-logo.png",
+        src: "/android-chrome-512x512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

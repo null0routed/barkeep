@@ -108,6 +108,13 @@ export const APP_STORAGE_KEYS = [
   "dnd-api-url",
   "dnd-api-key",
   "dnd-model",
+  // Image generation optional settings (TODO #9) — empty when the feature is off,
+  // which still counts toward ~zero bytes in measureStoredBytes.
+  "dnd-image-api-url",
+  "dnd-image-api-key",
+  "dnd-image-model",
+  "dnd-image-rate",
+  "dnd-image-size",
   "dnd-system-prompt",
   "dnd-max-messages",
   NOTES_STORAGE_KEY,
