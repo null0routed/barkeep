@@ -14,6 +14,8 @@ import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } fr
 import { defaultCharacter } from "@/lib/default-character"
 import { toast } from "sonner"
 import { migrateStoredSystemPrompt } from "@/lib/system-prompt"
+import { DEFAULT_IMAGE_RATE, DEFAULT_IMAGE_SIZE, clampImageRate } from "@/lib/image-gen"
+import { deleteImage } from "@/lib/image-store"
 import { LOOT_STORAGE_KEY, mergeLoot, sanitizeStoredLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
 import { loadCheckpoints, sanitizeCheckpoints, CHECKPOINTS_STORAGE_KEY, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
@@ -58,6 +60,13 @@ export default function Home() {
   // Custom (player-authored) system prompt only — "" means "use the built-in DM prompt",
   // which is resolved at request time (chat-interface) and never rendered in settings.
   const [systemPrompt, setSystemPrompt] = useState<string>("")
+  // Image generation (TODO #9) — all optional; blank api-url = feature off.
+  const [imageApiUrl, setImageApiUrl] = useState<string>("")
+  // Dedicated key for the image endpoint (optional); blank = reuse the chat API key.
+  const [imageApiKey, setImageApiKey] = useState<string>("")
+  const [imageModel, setImageModel] = useState<string>("")
+  const [imageRate, setImageRate] = useState<number>(DEFAULT_IMAGE_RATE)
+  const [imageSize, setImageSize] = useState<string>(DEFAULT_IMAGE_SIZE)
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   // Per-export API key decision (dialog) — see components/export-dialog.tsx
   const [exportOpen, setExportOpen] = useState(false)
@@ -169,6 +178,11 @@ export default function Home() {
     const savedNotes = localStorage.getItem(NOTES_STORAGE_KEY)
     const savedNotesContext = localStorage.getItem(NOTES_CONTEXT_KEY)
     const savedLoot = localStorage.getItem(LOOT_STORAGE_KEY)
+    const savedImageApiUrl = localStorage.getItem("dnd-image-api-url")
+    const savedImageApiKey = localStorage.getItem("dnd-image-api-key")
+    const savedImageModel = localStorage.getItem("dnd-image-model")
+    const savedImageRate = localStorage.getItem("dnd-image-rate")
+    const savedImageSize = localStorage.getItem("dnd-image-size")
 
     if (savedCharacter) {
       try {
@@ -187,6 +201,12 @@ export default function Home() {
     if (savedApiUrl) setApiUrl(savedApiUrl)
     if (savedApiKey) setApiKey(savedApiKey)
     if (savedModel) setModel(savedModel)
+    // Image generation settings (TODO #9) — the rate is clamped; blank values leave defaults.
+    if (savedImageApiUrl !== null) setImageApiUrl(savedImageApiUrl)
+    if (savedImageApiKey !== null) setImageApiKey(savedImageApiKey)
+    if (savedImageModel !== null) setImageModel(savedImageModel)
+    if (savedImageRate !== null) setImageRate(clampImageRate(Number.parseFloat(savedImageRate)))
+    if (savedImageSize !== null) setImageSize(savedImageSize)
     // Migration: a byte-for-byte copy of the built-in default (auto-stored by older
     // versions) resets to "" so it no longer renders in the settings dialog; a genuine
     // customization carries through untouched (see lib/system-prompt.ts).
@@ -248,6 +268,11 @@ export default function Home() {
       serializedBytes(apiUrl) +
       serializedBytes(apiKey) +
       serializedBytes(model) +
+      serializedBytes(imageApiUrl) +
+      serializedBytes(imageApiKey) +
+      serializedBytes(imageModel) +
+      serializedBytes(imageRate.toString()) +
+      serializedBytes(imageSize) +
       serializedBytes(systemPrompt) +
       serializedBytes(maxMessagesValue) +
       serializedBytes(notesContextValue) +
@@ -264,7 +289,14 @@ export default function Home() {
     const chatJson = chat === chatMessages ? fullChatJson : JSON.stringify(chat)
 
     if (chatDrop > 0 || checkpointDrop > 0) {
-      if (chatDrop > 0) setChatMessages(chat)
+      if (chatDrop > 0) {
+        setChatMessages(chat)
+        // Free the IndexedDB blobs behind the pruned messages (TODO.MD #9.2) so dropped
+        // scene images don't linger as orphans. deleteImage is fire-and-forget, never throws.
+        for (const dropped of chatMessages.slice(0, chatDrop)) {
+          if (dropped.image?.id) void deleteImage(dropped.image.id)
+        }
+      }
       if (checkpointDrop > 0) setCampaignCheckpoints(checkpoints)
       const parts: string[] = []
       if (chatDrop > 0) parts.push(`${chatDrop.toLocaleString()} oldest chat messages`)
@@ -280,6 +312,11 @@ export default function Home() {
       localStorage.setItem("dnd-api-url", apiUrl)
       localStorage.setItem("dnd-api-key", apiKey)
       localStorage.setItem("dnd-model", model)
+      localStorage.setItem("dnd-image-api-url", imageApiUrl)
+      localStorage.setItem("dnd-image-api-key", imageApiKey)
+      localStorage.setItem("dnd-image-model", imageModel)
+      localStorage.setItem("dnd-image-rate", imageRate.toString())
+      localStorage.setItem("dnd-image-size", imageSize)
       localStorage.setItem("dnd-system-prompt", systemPrompt)
       localStorage.setItem("dnd-max-messages", maxMessagesValue)
       localStorage.setItem(NOTES_STORAGE_KEY, notesJson)
@@ -322,7 +359,7 @@ export default function Home() {
       persistStateRef.current()
     }, AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [character, chatMessages, apiUrl, apiKey, model, systemPrompt, maxMessages, campaignNotes, notesInContext, loot])
+  }, [character, chatMessages, apiUrl, apiKey, model, imageApiUrl, imageApiKey, imageModel, imageRate, imageSize, systemPrompt, maxMessages, campaignNotes, notesInContext, loot])
 
   // If the tab hides while a save is pending, flush it immediately — the page is still
   // alive here, so this is reliable (a save inside a beforeunload handler is not).
@@ -389,6 +426,11 @@ export default function Home() {
               serializedBytes(String(data.apiUrl ?? apiUrl)) +
               serializedBytes(String(data.apiKey ?? apiKey)) +
               serializedBytes(String(data.model ?? model)) +
+              serializedBytes(String(data.imageApiUrl ?? imageApiUrl)) +
+              serializedBytes(String(data.imageApiKey ?? imageApiKey)) +
+              serializedBytes(String(data.imageModel ?? imageModel)) +
+              serializedBytes(String(data.imageRate ?? imageRate)) +
+              serializedBytes(String(data.imageSize ?? imageSize)) +
               serializedBytes(String(data.systemPrompt ?? systemPrompt)) +
               serializedBytes(String(data.maxMessages ?? maxMessages)) +
               serializedBytes(String(data.notesInContext ?? notesInContext))
@@ -405,6 +447,12 @@ export default function Home() {
               })
               if (drop > 0) {
                 chatToApply = importedChatArray.slice(drop)
+                // Free any IndexedDB blobs for the dropped (un-imported) messages — usually a
+                // no-op (their images came from the source device) but keeps IDB consistent on
+                // a same-device export→import round trip.
+                for (const dropped of importedChatArray.slice(0, drop)) {
+                  if (dropped.image?.id) void deleteImage(dropped.image.id)
+                }
                 toast.warning(
                   `Import exceeded the storage budget — the ${drop.toLocaleString()} oldest chat messages were not imported. Export them from the source device if you need them.`,
                 )
@@ -416,6 +464,13 @@ export default function Home() {
             if (data.apiUrl) setApiUrl(data.apiUrl)
             if (data.apiKey) setApiKey(data.apiKey)
             if (data.model) setModel(data.model)
+            // Image settings (TODO #9): apply when present in the file (even blank, so
+            // a saved device's off-state carries); absent older exports leave current values alone.
+            if (data.imageApiUrl !== undefined) setImageApiUrl(String(data.imageApiUrl))
+            if (data.imageApiKey !== undefined) setImageApiKey(String(data.imageApiKey))
+            if (data.imageModel !== undefined) setImageModel(String(data.imageModel))
+            if (data.imageRate !== undefined) setImageRate(clampImageRate(Number(data.imageRate)))
+            if (data.imageSize !== undefined) setImageSize(String(data.imageSize))
             // Same migration as the localStorage load: old export files may carry an
             // untouched copy of the built-in prompt.
             if (data.systemPrompt !== undefined) setSystemPrompt(migrateStoredSystemPrompt(data.systemPrompt))
@@ -450,8 +505,12 @@ export default function Home() {
       character,
       chatMessages,
       apiUrl,
-      ...(includeApiKey ? { apiKey } : {}),
+      ...(includeApiKey ? { apiKey, imageApiKey } : {}),
       model,
+      imageApiUrl,
+      imageModel,
+      imageRate,
+      imageSize,
       systemPrompt,
       maxMessages,
       campaignCheckpoints,
@@ -484,7 +543,9 @@ export default function Home() {
     <main className="container mx-auto p-3 max-w-[2200px] h-screen flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
-          <Image src="/barkeep-logo.png" alt="Barkeep Logo" width={40} height={40} className="rounded-md" />
+          {/* App icon (mug), not the 1.98 MB portrait logo — the badge renders at 40px,
+              so the 35.8 KB 192px variant is 4.8x supersampled and 1/8 the download. */}
+          <Image src="/android-chrome-192x192.png" alt="Barkeep logo" width={40} height={40} className="rounded-md" />
           <h1 className="text-2xl font-bold">Barkeep</h1>
         </div>
         <div className="flex gap-2">
@@ -566,6 +627,16 @@ export default function Home() {
             setApiKey={setApiKey}
             model={model}
             setModel={setModel}
+            imageApiUrl={imageApiUrl}
+            setImageApiUrl={setImageApiUrl}
+            imageApiKey={imageApiKey}
+            setImageApiKey={setImageApiKey}
+            imageModel={imageModel}
+            setImageModel={setImageModel}
+            imageRate={imageRate}
+            setImageRate={setImageRate}
+            imageSize={imageSize}
+            setImageSize={setImageSize}
             systemPrompt={systemPrompt}
             setSystemPrompt={setSystemPrompt}
             campaignNotes={campaignNotes}
