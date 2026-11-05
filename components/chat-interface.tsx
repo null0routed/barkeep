@@ -206,7 +206,7 @@ const ChatMessageComponent = memo(
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 hover:bg-muted"
+              className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
               onClick={() => onDelete(message.id)}
               title="Delete message"
               aria-label="Delete message"
@@ -893,6 +893,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
             size="icon"
             onClick={() => setIsAlertOpen(true)}
             disabled={messages.length === 0}
+            className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
             title="Clear chat history"
           >
             <TrashIcon className="h-4 w-4" />

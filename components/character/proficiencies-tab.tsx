@@ -44,7 +44,7 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
                       {proficiency.type.charAt(0).toUpperCase() + proficiency.type.slice(1)}
                     </Badge>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => removeProficiency(proficiency.id)}>
+                  <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeProficiency(proficiency.id)}>
                     <Trash2Icon className="h-4 w-4" />
                   </Button>
                 </div>

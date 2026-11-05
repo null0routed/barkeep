@@ -85,7 +85,7 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                             <Button size="icon" variant="ghost" onClick={() => startEditingSpell(spell)}>
                               <EditIcon className="h-4 w-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" onClick={() => removeSpell(spell.id)}>
+                            <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeSpell(spell.id)}>
                               <Trash2Icon className="h-4 w-4" />
                             </Button>
                           </div>

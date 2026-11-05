@@ -27,7 +27,7 @@
 	9.2. A tool call for the AI to request an image for a provided scene/description, rendered in the chat.
 	9.3. Rate limiting for image generation — only on major scene and character introductions (one every x messages?).
 
-10. Replace the built-in default DM prompt with the owner's updated version (the .MD file in my downloads folder — I'll provide the directory, or paste the content in).
+10. ~~Replace the built-in default DM prompt with the owner's updated version (the .MD file in my downloads folder — I'll provide the directory, or paste the content in).~~ — done in 18be3ba
 
 11. All the chat bubble delete icons should show a red outline/stroke (wireframe) on hover — visual cue that delete is the destructive action.
 

@@ -95,7 +95,7 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                         <Button size="icon" variant="ghost" onClick={() => startEditingFeat(index)}>
                           <EditIcon className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => removeFeat(feat.id)}>
+                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeFeat(feat.id)}>
                           <Trash2Icon className="h-4 w-4" />
                         </Button>
                       </div>

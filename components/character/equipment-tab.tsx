@@ -167,7 +167,7 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
                       <Button size="icon" variant="ghost" onClick={() => startEditingEquipment(index)}>
                         <EditIcon className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" onClick={() => removeEquipmentItem(index)}>
+                      <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeEquipmentItem(index)}>
                         <Trash2Icon className="h-4 w-4" />
                       </Button>
                     </div>

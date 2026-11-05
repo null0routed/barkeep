@@ -103,7 +103,7 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
                         <Button size="icon" variant="ghost" onClick={() => startEditingTrait(index)}>
                           <EditIcon className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => removeTrait(trait.id)}>
+                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeTrait(trait.id)}>
                           <Trash2Icon className="h-4 w-4" />
                         </Button>
                       </div>
