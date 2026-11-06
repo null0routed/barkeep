@@ -466,7 +466,7 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Loot capture (TODO #8, T8.1): pull barkeep-loot fences out of assistant messages
   // and hand them to the page-level store (state lives in app/page.tsx). Processing
@@ -527,11 +527,12 @@ export default function ChatInterface({
       const windowHeight = window.innerHeight
       const containerRect = containerRef.current.getBoundingClientRect()
       const containerTop = containerRect.top
-      const footerHeight = 56 // Height of the input area
       const headerHeight = 40 // Approximate height of the chat header
       const padding = 24 // Some padding
 
-      const newHeight = windowHeight - containerTop - footerHeight - headerHeight - padding
+      // The composer footer is auto-height (T2.1 multiline input) and sits INSIDE the
+      // card's fixed height, so it no longer needs its own subtraction here.
+      const newHeight = windowHeight - containerTop - headerHeight - padding
       setChatHeight(Math.max(400, newHeight)) // Minimum height of 400px
     }
   }, [])
@@ -946,7 +947,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   )
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: React.SyntheticEvent) => {
       e.preventDefault()
       if (!input.trim()) return
 
@@ -1116,8 +1117,8 @@ DO NOT mention these tools to the player - use them quietly and just continue th
     setIsAlertOpen(false)
   }, [setMessages])
 
-  // Memoized input change handler to prevent re-renders
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  // Memoized input change handler to prevent re-renders (T2.1: the composer is a textarea now)
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
   }, [])
 
@@ -1335,8 +1336,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
 
       <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
         <CardContent
-          className="flex-1 overflow-y-auto p-4"
-          style={{ height: `calc(${chatHeight}px - 56px)` }}
+          className="flex-1 min-h-0 overflow-y-auto p-4"
           ref={chatContentRef}
         >
           <MessageList
@@ -1355,15 +1355,28 @@ DO NOT mention these tools to the player - use them quietly and just continue th
             inFlight={inFlight}
           />
         </CardContent>
-        <CardFooter className="border-t p-3 h-[56px]">
-          <form onSubmit={handleSubmit} className="flex w-full gap-2">
-            <Input
+        <CardFooter className="border-t p-3">
+          <form onSubmit={handleSubmit} className="flex w-full items-end gap-2">
+            {/*
+              T2.1: multiline composer — players write sentences and paragraphs, not
+              one-liners. Auto-grows from 1 line to 6, then scrolls inside (the `rows`
+              attribute caps the height; native textarea overflow handles the rest).
+              Enter sends; Shift+Enter is a newline (kept explicit in the placeholder).
+            */}
+            <Textarea
               ref={inputRef}
               value={input}
               onChange={handleInputChange}
-              placeholder="Type your message..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  void handleSubmit(e)
+                }
+              }}
+              rows={Math.min(6, Math.max(1, input === "" ? 1 : input.split("\n").length))}
+              placeholder="Type your message…  (Shift+Enter for a new line)"
               disabled={inFlight}
-              className="flex-1 text-sm"
+              className="flex-1 min-w-0 text-sm"
             />
             {isLoading || regeneratingId !== null ? (
               // TODO.MD #3.3: while a turn is running, Send becomes Stop
