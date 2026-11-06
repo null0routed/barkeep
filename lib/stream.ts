@@ -113,6 +113,87 @@ export function parseToolArgs(raw: unknown): Record<string, unknown> {
   return {}
 }
 
+/** A coalescing sink for high-frequency streaming updates. */
+export interface StreamFlusher {
+  /** Record the latest FULL value (not an increment) and schedule its commit on the next tick. */
+  push: (value: string) => void
+  /** Commit the pending value immediately (turn settlement — never a stale frame after this). */
+  flush: () => void
+  /** Drop pending work without committing (a turn that failed or was aborted). */
+  cancel: () => void
+}
+
+/** Opaque handle for a scheduled tick — a `number` for requestAnimationFrame, a `Timeout` for the setTimeout fallback. */
+type TickHandle = number | ReturnType<typeof setTimeout>
+
+/**
+ * Coalesce a burst of streaming deltas into at most ONE commit per animation frame (T3.1).
+ *
+ * Without this, callApi's `onDelta` runs on every SSE chunk — and each commit re-parses
+ * the bubble's entire markdown (and re-scans loot fences) at chunk rate, i.e. O(n²) per
+ * long narration. Deltas are still "freshest wins" (push takes the accumulated value, not
+ * an increment), so a burst of N chunks becomes one commit of the last one, ~16 ms
+ * later (`requestAnimationFrame` where the platform offers one, else a short
+ * `setTimeout`). `flush()` drains pending work synchronously for the turn's final
+ * settlement; `cancel()` discards it when the turn fails or is aborted.
+ *
+ * The tick source is injectable so tests can drive it deterministically; the default
+ * pair is (requestAnimationFrame, cancelAnimationFrame) or (setTimeout, clearTimeout).
+ */
+export function createStreamFlusher(
+  commit: (value: string) => void,
+  options?: {
+    /** Delay for the setTimeout fallback, ms. Default 80. */
+    delayMs?: number
+    /** Injectable tick source (tests); defaults to requestAnimationFrame/setTimeout. */
+    schedule?: (callback: () => void) => TickHandle
+    cancel?: (handle: TickHandle) => void
+  },
+): StreamFlusher {
+  const hasRaf = typeof requestAnimationFrame === "function"
+  const defaultSchedule = (cb: () => void): TickHandle =>
+    hasRaf ? requestAnimationFrame(cb) : setTimeout(cb, options?.delayMs ?? 80)
+  const defaultCancel = (handle: TickHandle): void => {
+    if (hasRaf) cancelAnimationFrame(handle as number)
+    else clearTimeout(handle)
+  }
+  const schedule = options?.schedule ?? defaultSchedule
+  const cancelTick = options?.cancel ?? defaultCancel
+
+  let pending: string | undefined
+  let hasPending = false
+  let handle: TickHandle | null = null
+
+  const commitPending = (): void => {
+    handle = null
+    if (!hasPending) return
+    hasPending = false
+    const value = pending
+    pending = undefined
+    commit(value as string)
+  }
+
+  return {
+    push: (value: string) => {
+      pending = value
+      hasPending = true
+      if (handle === null) handle = schedule(commitPending)
+    },
+    flush: () => {
+      if (handle !== null) cancelTick(handle)
+      commitPending()
+    },
+    cancel: () => {
+      if (handle !== null) {
+        cancelTick(handle)
+        handle = null
+      }
+      hasPending = false
+      pending = undefined
+    },
+  }
+}
+
 /**
  * Read an OpenAI-compatible `text/event-stream` body and yield each parsed JSON chunk
  * (TODO.MD #3.6). Stops at the `data: [DONE]` sentinel. The reader is released on

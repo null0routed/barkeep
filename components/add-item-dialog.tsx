@@ -33,7 +33,10 @@ interface AddItemDialogProps {
   // the generator runs in plain canonical mode. The player's custom system prompt
   // ("" = built-in DM prompt) carries the campaign's game system.
   loot?: LootEntry[]
-  chatMessages?: ChatMessage[]
+  // T3.2: stable read-through accessor instead of a live array — CharacterSheet is
+  // memoized and skips re-rendering while a turn streams; the generator resolves
+  // the current history the moment "Generate Details" runs.
+  getChatMessages?: () => ChatMessage[]
   systemPrompt?: string
 }
 
@@ -46,7 +49,7 @@ export default function AddItemDialog({
   apiKey = "",
   model = "gpt-4o-mini",
   loot = [],
-  chatMessages = [],
+  getChatMessages = () => [],
   systemPrompt = "",
 }: AddItemDialogProps) {
   const [name, setName] = useState("")
@@ -108,7 +111,7 @@ export default function AddItemDialog({
       // (owner revision 2026-10-30) — the campaign's game system arrives via its DM
       // prompt, never a hard-coded ruleset.
       const itemName = name.trim()
-      const context = buildGenerationContext(itemName, loot, chatMessages)
+      const context = buildGenerationContext(itemName, loot, getChatMessages())
       const { system, user } = buildGeneratorMessages({
         name: itemName,
         type,

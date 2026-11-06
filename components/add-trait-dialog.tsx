@@ -13,15 +13,21 @@ interface AddTraitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onAdd: (trait: Trait) => void
-  chatMessages: ChatMessage[]
+  // T3.2: stable read-through accessor instead of a live array — the memoized
+  // sheet skips re-rendering while a turn streams, and the "Pull from chat" list
+  // resolves the current history at render time.
+  getChatMessages: () => ChatMessage[]
 }
 
-export default function AddTraitDialog({ open, onOpenChange, onAdd, chatMessages }: AddTraitDialogProps) {
+export default function AddTraitDialog({ open, onOpenChange, onAdd, getChatMessages }: AddTraitDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [source, setSource] = useState("")
   const [useChat, setUseChat] = useState(false)
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null)
+  // Resolved at render time from the stable accessor (see props) so the rest of
+  // the component is unchanged.
+  const chatMessages = getChatMessages()
 
   const handleAdd = () => {
     if (!name.trim()) return

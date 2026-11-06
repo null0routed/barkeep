@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { memo, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type {
   CharacterData,
@@ -38,7 +38,10 @@ import CampaignNotesCard from "./campaign-notes"
 interface CharacterSheetProps {
   character: CharacterData
   setCharacter: React.Dispatch<React.SetStateAction<CharacterData>>
-  chatMessages: ChatMessage[]
+  // T3.2: stable read-through accessor (see app/page.tsx) instead of a live array —
+  // a per-delta chatMessages array would defeat this component's memo during streaming.
+  // Call it when the "Pull from chat" dialogs need the current history.
+  getChatMessages: () => ChatMessage[]
   apiUrl?: string
   apiKey?: string
   model?: string
@@ -54,10 +57,10 @@ interface CharacterSheetProps {
   setNotesInContext: React.Dispatch<React.SetStateAction<boolean>>
 }
 
-export default function CharacterSheet({
+function CharacterSheet({
   character,
   setCharacter,
-  chatMessages,
+  getChatMessages,
   apiUrl = "https://api.openai.com/v1/chat/completions",
   apiKey = "",
   model = "gpt-4o-mini",
@@ -269,7 +272,7 @@ export default function CharacterSheet({
         apiKey={apiKey}
         model={model}
         loot={loot}
-        chatMessages={chatMessages}
+        getChatMessages={getChatMessages}
         systemPrompt={systemPrompt}
       />
 
@@ -282,7 +285,7 @@ export default function CharacterSheet({
         apiKey={apiKey}
         model={model}
         loot={loot}
-        chatMessages={chatMessages}
+        getChatMessages={getChatMessages}
         systemPrompt={systemPrompt}
       />
 
@@ -292,10 +295,10 @@ export default function CharacterSheet({
         open={isAddTraitOpen}
         onOpenChange={setIsAddTraitOpen}
         onAdd={addTrait}
-        chatMessages={chatMessages}
+        getChatMessages={getChatMessages}
       />
 
-      <AddFeatDialog open={isAddFeatOpen} onOpenChange={setIsAddFeatOpen} onAdd={addFeat} chatMessages={chatMessages} />
+      <AddFeatDialog open={isAddFeatOpen} onOpenChange={setIsAddFeatOpen} onAdd={addFeat} getChatMessages={getChatMessages} />
 
       <AddSpellDialog
         open={isAddSpellOpen}
@@ -309,3 +312,10 @@ export default function CharacterSheet({
     </div>
   )
 }
+
+// T3.2: while a turn streams, Home re-renders per delta — previously chatMessages
+// (a fresh array each delta) flowed in here and re-rendered the whole sheet,
+// including every always-mounted dialog. All props now hold stable identity
+// (state, setters, refs, and the getChatMessages accessor), so memo skips the
+// entire subtree until something the sheet actually shows changes.
+export default memo(CharacterSheet)

@@ -6,8 +6,10 @@ import {
   finalizeToolCalls,
   iterateStream,
   parseDataLine,
+  createStreamFlusher,
   parseToolArgs,
   type SseLine,
+  type StreamFlusher,
   type ToolCallAcc,
 } from "./stream"
 
@@ -194,4 +196,83 @@ test("parseToolArgs returns {} for non-object values", () => {
   assert.deepEqual(parseToolArgs("just a string"), {})
   assert.deepEqual(parseToolArgs('"quoted"'), {}) // valid JSON but not an object
   assert.deepEqual(parseToolArgs(undefined), {})
+})
+
+// ---------------------------------------------------------------------------
+// createStreamFlusher (T3.1 — coalesce streaming deltas to ≤1 commit per tick)
+// ---------------------------------------------------------------------------
+
+/** A manually driven tick: callbacks are recorded until the test "advances the frame". */
+function manualTick(commit: (value: string) => void): {
+  flusher: StreamFlusher
+  fire: () => void
+} {
+  let scheduled: (() => void) | null = null
+  const flusher = createStreamFlusher(commit, {
+    schedule: (cb) => {
+      scheduled = cb
+      return 1
+    },
+    cancel: () => {
+      scheduled = null
+    },
+  })
+  return {
+    flusher,
+    fire: () => {
+      const cb = scheduled
+      scheduled = null
+      cb?.()
+    },
+  }
+}
+
+test("createStreamFlusher coalesces a burst of pushes into one commit of the freshest value", () => {
+  const commits: string[] = []
+  const { flusher, fire } = manualTick((v) => commits.push(v))
+  flusher.push("He opens the door")
+  flusher.push("He opens the door and steps")
+  flusher.push("He opens the door and steps inside.")
+  assert.deepEqual(commits, []) // nothing commits before the tick fires
+  fire()
+  assert.deepEqual(commits, ["He opens the door and steps inside."])
+})
+
+test("createStreamFlusher reschedules when more pushes arrive after a tick", () => {
+  const commits: string[] = []
+  const { flusher, fire } = manualTick((v) => commits.push(v))
+  flusher.push("a")
+  fire()
+  flusher.push("a b")
+  fire()
+  assert.deepEqual(commits, ["a", "a b"])
+})
+
+test("createStreamFlusher.flush commits immediately and drains the pending tick", () => {
+  const commits: string[] = []
+  const { flusher, fire } = manualTick((v) => commits.push(v))
+  flusher.push("final text")
+  flusher.flush()
+  assert.deepEqual(commits, ["final text"])
+  fire() // the tick was cancelled by flush — firing again commits nothing
+  assert.deepEqual(commits, ["final text"])
+})
+
+test("createStreamFlusher.cancel drops pending work without committing", () => {
+  const commits: string[] = []
+  const { flusher, fire } = manualTick((v) => commits.push(v))
+  flusher.push("aborted turn content")
+  flusher.cancel()
+  fire()
+  assert.deepEqual(commits, [])
+})
+
+test("createStreamFlusher tolerates no-op flush and repeat cancel", () => {
+  const commits: string[] = []
+  const { flusher } = manualTick((v) => commits.push(v))
+  flusher.flush()
+  flusher.cancel()
+  flusher.cancel()
+  flusher.push("one more")
+  assert.deepEqual(commits, [])
 })

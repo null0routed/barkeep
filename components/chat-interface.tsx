@@ -72,6 +72,7 @@ import {
 } from "@/lib/chat-turn"
 import {
   accumulateToolCalls,
+  createStreamFlusher,
   finalizeToolCalls,
   iterateStream,
   parseToolArgs,
@@ -317,7 +318,11 @@ const ChatMessageComponent = memo(
                 </div>
               </div>
             ) : isUser ? (
-              message.content
+              // T2.1 follow-up: the player's own newlines (Shift+Enter) must survive the
+              // round trip — a raw text node under white-space:normal is CSS-whitespace
+              // and the line breaks silently collapse into spaces. pre-wrap keeps them;
+              // overflow-wrap-anywhere still breaks long unbroken strings (URLs, item ids).
+              <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content}</div>
             ) : (
               <>
                 {/* Scene image (TODO.MD #9.2): centered at the top of the bubble, above
@@ -920,7 +925,21 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         })
       }
 
-      const turn = await callApi(conversation, upsertContent)
+      // T3.1: coalesce the stream's per-chunk deltas into at most one commit per
+      // animation frame — every commit re-parses the bubble's markdown and re-scans
+      // it for loot fences, so committing at chunk rate is ~O(n²) on long narration.
+      // `push` is freshest-wins (callApi passes the accumulated content, not an
+      // increment); `flush` settles the final value before the turn's bookkeeping
+      // write below, and `cancel` drops any pending frame on a failed/aborted turn.
+      const contentSink = createStreamFlusher(upsertContent)
+      let turn: AssistantTurn
+      try {
+        turn = await callApi(conversation, (content) => contentSink.push(content))
+        contentSink.flush()
+      } catch (error) {
+        contentSink.cancel()
+        throw error
+      }
 
       setMessages((prev) => {
         const index = prev.findIndex((message) => message.id === id)

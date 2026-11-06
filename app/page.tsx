@@ -54,6 +54,17 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [character, setCharacter] = useState<CharacterData>(defaultCharacter)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  // T3.2: read-through mirror of chatMessages (same pattern as chat-interface's
+  // checkpointsRef). `getChatMessages` keeps a STABLE identity across re-renders —
+  // including the per-frame streaming re-renders of this component — while always
+  // returning the current history. CharacterSheet (memoized) can therefore skip
+  // re-rendering entirely while a turn streams; the dialogs read the accessor at
+  // render/effect time so they always see the latest messages.
+  const chatMessagesRef = useRef(chatMessages)
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+  }, [chatMessages])
+  const getChatMessages = useCallback(() => chatMessagesRef.current, [])
   const [apiUrl, setApiUrl] = useState<string>("https://api.openai.com/v1/chat/completions")
   const [apiKey, setApiKey] = useState<string>("")
   const [model, setModel] = useState<string>("gpt-4o-mini")
@@ -595,7 +606,7 @@ export default function Home() {
           <CharacterSheet
             character={character}
             setCharacter={setCharacter}
-            chatMessages={chatMessages}
+            getChatMessages={getChatMessages} // stable accessor (T3.2) — see the ref mirror above
             loot={loot} // "Generate Details" seeding (TODO #8, T8.2)
             systemPrompt={systemPrompt} // "" = built-in DM prompt; the campaign's game system
             apiUrl={apiUrl}
