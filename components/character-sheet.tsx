@@ -182,14 +182,17 @@ function CharacterSheet({
       />
 
       <Tabs defaultValue="inventory">
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
-          <TabsTrigger value="equipment">Equipment</TabsTrigger>
-          <TabsTrigger value="proficiencies">Proficiencies</TabsTrigger>
-          <TabsTrigger value="skills">Skills</TabsTrigger>
-          <TabsTrigger value="traits">Traits</TabsTrigger>
-          <TabsTrigger value="feats">Feats</TabsTrigger>
-          <TabsTrigger value="spells">Spells</TabsTrigger>
+        {/* Mobile (below md): single row that scrolls horizontally — seven 7-word tabs in a
+            3-column grid would wrap to 3 rows and overflow the TabsList's fixed h-10,
+            visually floating over the tab content. md+: the original 7-column grid. */}
+        <TabsList className="w-full flex items-center justify-start gap-1 overflow-x-auto md:grid md:grid-cols-7 md:justify-center">
+          <TabsTrigger value="inventory" className="shrink-0">Inventory</TabsTrigger>
+          <TabsTrigger value="equipment" className="shrink-0">Equipment</TabsTrigger>
+          <TabsTrigger value="proficiencies" className="shrink-0">Proficiencies</TabsTrigger>
+          <TabsTrigger value="skills" className="shrink-0">Skills</TabsTrigger>
+          <TabsTrigger value="traits" className="shrink-0">Traits</TabsTrigger>
+          <TabsTrigger value="feats" className="shrink-0">Feats</TabsTrigger>
+          <TabsTrigger value="spells" className="shrink-0">Spells</TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory">

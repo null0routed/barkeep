@@ -54,8 +54,8 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Feats</CardTitle>
-        <Button onClick={() => setIsAddFeatOpen(true)}>
-          <PlusIcon className="h-4 w-4 mr-2" /> Add Feat
+        <Button onClick={() => setIsAddFeatOpen(true)} aria-label="Add feat">
+          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Feat</span>
         </Button>
       </CardHeader>
       <CardContent>
@@ -91,11 +91,11 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                   <>
                     <div className="flex justify-between items-start">
                       <h3 className="font-bold">{feat.name}</h3>
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => startEditingFeat(index)}>
+                      <div className="flex flex-col gap-1 sm:flex-row">
+                        <Button size="icon" variant="ghost" aria-label="Edit feat" onClick={() => startEditingFeat(index)}>
                           <EditIcon className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeFeat(feat.id)}>
+                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove feat" onClick={() => removeFeat(feat.id)}>
                           <Trash2Icon className="h-4 w-4" />
                         </Button>
                       </div>

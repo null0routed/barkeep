@@ -78,7 +78,6 @@ import {
   parseToolArgs,
   type ToolCallAcc,
 } from "@/lib/stream"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
 interface ChatInterfaceProps {
@@ -196,6 +195,31 @@ const ChatMessageComponent = memo(
   }) => {
     const isUser = message.role === "user"
 
+    // T4.2: the turn-stats display is a tap-to-open POPOVER, not a tooltip —
+    // tooltips never fire on touch screens, and these numbers (tokens in/out,
+    // duration, speed) are a genuine glanceable datum, not decoration.
+    // Hand-rolled on the lightbox precedent (no new dependency): toggled by click,
+    // closed by outside-pointer or Escape.
+    const [statsOpen, setStatsOpen] = useState(false)
+    const statsRef = useRef<HTMLDivElement>(null)
+    useEffect(() => {
+      if (!statsOpen) return
+      const onPointerDown = (e: PointerEvent) => {
+        if (statsRef.current && !statsRef.current.contains(e.target as Node)) {
+          setStatsOpen(false)
+        }
+      }
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setStatsOpen(false)
+      }
+      document.addEventListener("pointerdown", onPointerDown)
+      document.addEventListener("keydown", onKeyDown)
+      return () => {
+        document.removeEventListener("pointerdown", onPointerDown)
+        document.removeEventListener("keydown", onKeyDown)
+      }
+    }, [statsOpen])
+
     return (
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
         <div
@@ -216,31 +240,40 @@ const ChatMessageComponent = memo(
             className="flex shrink-0 flex-col gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           >
             {/* TODO.MD #3.2: edit + resend, on user bubbles only */}
-            {/* TODO.MD #3.4: per-turn stats (tokens in/out, context, speed, duration) */}
+            {/* TODO.MD #3.4: per-turn stats (tokens in/out, context, speed, duration)
+                T4.2: tap-to-open popover (touches can't hover); opens toward the
+                bubble on the right, vertically centered on the button. */}
             {!isUser && message.stats && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 hover:bg-muted"
-                    title="Turn statistics"
+              <div className="relative" ref={statsRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-muted"
+                  title="Turn statistics"
+                  aria-label="Turn statistics"
+                  aria-haspopup="true"
+                  aria-expanded={statsOpen}
+                  onClick={() => setStatsOpen((open) => !open)}
+                >
+                  <InfoIcon className="h-3 w-3" />
+                </Button>
+                {statsOpen && (
+                  <div
+                    className="absolute left-full top-1/2 z-40 ml-2 w-max max-w-[260px] -translate-y-1/2 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                    role="group"
                     aria-label="Turn statistics"
                   >
-                    <InfoIcon className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <div className="grid grid-cols-[max-content_max-content] gap-x-3 gap-y-0.5">
-                    {statsLines(message.stats).map((line) => (
-                      <span key={line.label} className="contents">
-                        <span className="pr-1 opacity-60">{line.label}</span>
-                        <span className="whitespace-nowrap">{line.value}</span>
-                      </span>
-                    ))}
+                    <div className="grid grid-cols-[max-content_max-content] gap-x-3 gap-y-0.5">
+                      {statsLines(message.stats).map((line) => (
+                        <span key={line.label} className="contents">
+                          <span className="pr-1 opacity-60">{line.label}</span>
+                          <span className="whitespace-nowrap">{line.value}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </TooltipContent>
-              </Tooltip>
+                )}
+              </div>
             )}
             {isUser && onEdit && (
               <Button
@@ -1142,291 +1175,289 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   }, [])
 
   return (
-    // Radix Tooltip requires a provider ancestor; scoping it here keeps the bubble
-    // actions self-contained (settings, alerts, and dialogs do not need it)
-    <TooltipProvider delayDuration={150}>
-      <div className="flex flex-col h-full" ref={containerRef}>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold">AI Chat</h2>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setIsAlertOpen(true)}
-            disabled={messages.length === 0}
-            className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-            title="Clear chat history"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </Button>
-          <Dialog
-            onOpenChange={(open) => {
-              if (open) void refreshImageFootprint()
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button variant="outline" size="icon" title="Chat settings">
-                <SettingsIcon className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Chat Settings</DialogTitle>
-                <DialogDescription>Configure your AI chat settings here.</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="api-url">API URL</Label>
-                  <Input
-                    id="api-url"
-                    value={apiUrl}
-                    onChange={(e) => setApiUrl(e.target.value)}
-                    placeholder="https://api.openai.com/v1/chat/completions"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    For local models, use something like: http://localhost:1234/v1/chat/completions
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="api-key">API Key</Label>
-                  <Input
-                    id="api-key"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Enter your API key (required for most services)"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    An API key is required for OpenAI services. Some local servers may not require a key.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model">Model</Label>
-                  <Input
-                    id="model"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="Model name (e.g., gpt-3.5-turbo, llama3, etc.)"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Common models: gpt-3.5-turbo, gpt-4, llama-3-8b-instruct, mistral-7b-instruct, etc.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max-messages">Max Previous Messages</Label>
-                  <Input
-                    id="max-messages"
-                    type="number"
-                    value={maxMessages}
-                    onChange={(e) =>
-                      setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || DEFAULT_MAX_MESSAGES))
-                    }
-                    min={1}
-                    max={20}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Maximum number of previous messages to include in the context (1-20).
-                  </p>
-                </div>
-              </div>
-
-              {/* Image generation (optional) — TODO.MD #9; expandable section, starts collapsed */}
-              <div className="rounded-md border">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 p-3 text-left"
-                  onClick={() => setImageSettingsOpen((open) => !open)}
-                  aria-expanded={imageSettingsOpen}
-                >
-                  {imageSettingsOpen ? (
-                    <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  ) : (
-                    <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="text-sm font-medium">Image generation (optional)</span>
-                  <span
-                    className={`ml-auto rounded-full px-2 py-0.5 text-xs ${
-                      imageApiUrl.trim()
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {imageApiUrl.trim() ? "On" : "Off"}
-                  </span>
-                </button>
-                {imageSettingsOpen && (
-                  <div className="space-y-3 border-t p-3">
-                    <p className="text-xs text-muted-foreground">
-                      Ask the Dungeon Master to depict major scenes and character introductions.
-                      Leave the endpoint URL blank to turn this off entirely.
-                    </p>
-                    {imageFootprint !== null && (
-                      <p className="text-xs text-muted-foreground">
-                        {imageFootprint.count > 0
-                          ? `${imageFootprint.count} scene${imageFootprint.count === 1 ? "" : "s"} · ${formatBytes(
-                              imageFootprint.bytes,
-                            )} stored`
-                          : "No scene images stored yet."}
-                      </p>
-                    )}
-                    <div className="space-y-2">
-                      <Label htmlFor="image-api-url">Image endpoint</Label>
-                      <Input
-                        id="image-api-url"
-                        value={imageApiUrl}
-                        onChange={(e) => setImageApiUrl(e.target.value)}
-                        placeholder="e.g. https://api.openai.com/v1/images/generations"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="image-api-key">Image API key (optional)</Label>
-                      <Input
-                        id="image-api-key"
-                        type="password"
-                        value={imageApiKey}
-                        onChange={(e) => setImageApiKey(e.target.value)}
-                        placeholder="Only if the image endpoint uses a different key — the chat key is used otherwise"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="image-model">Image model (optional)</Label>
-                      <Input
-                        id="image-model"
-                        value={imageModel}
-                        onChange={(e) => setImageModel(e.target.value)}
-                        placeholder="e.g. gpt-image-1, flux-1-schnell — leave blank for the provider default"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="image-rate">Min messages between images</Label>
-                        <Input
-                          id="image-rate"
-                          type="number"
-                          value={imageRate}
-                          onChange={(e) => setImageRate(clampImageRate(Number.parseInt(e.target.value)))}
-                          min={MIN_IMAGE_RATE}
-                          max={MAX_IMAGE_RATE}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          At least this many messages must pass between image requests (1-{MAX_IMAGE_RATE}).
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="image-size">Image size</Label>
-                        <Input
-                          id="image-size"
-                          value={imageSize}
-                          onChange={(e) => setImageSize(e.target.value)}
-                          placeholder="1280x720"
-                          title="Fixed render size (width x height) — e.g. 1280x720, 1024x1024, 1536x1024"
-                        />
-                        <p className="text-xs text-muted-foreground">Requested render size; 720p (1280x720) is a good default.</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+  <div className="flex flex-col h-full" ref={containerRef}>
+    <div className="flex justify-between items-center mb-4">
+      <h2 className="text-lg font-bold">AI Chat</h2>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setIsAlertOpen(true)}
+          disabled={messages.length === 0}
+          className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+          title="Clear chat history"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </Button>
+        <Dialog
+          onOpenChange={(open) => {
+            if (open) void refreshImageFootprint()
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" title="Chat settings">
+              <SettingsIcon className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Chat Settings</DialogTitle>
+              <DialogDescription>Configure your AI chat settings here.</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="custom-system-prompt">Custom System Prompt</Label>
-                <Textarea
-                  id="custom-system-prompt"
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="Optional. Leave blank to use the built-in D&D Dungeon Master prompt, or enter your own to replace it…"
-                  rows={6}
-                  className="resize-y"
+                <Label htmlFor="api-url">API URL</Label>
+                <Input
+                  id="api-url"
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1/chat/completions"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Only your own text lives here. When left blank the built-in Dungeon Master prompt is used
-                  automatically and is never shown or pre-filled in this box.
+                  For local models, use something like: http://localhost:1234/v1/chat/completions
                 </p>
               </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button>Done</Button>
-                </DialogClose>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+              <div className="space-y-2">
+                <Label htmlFor="api-key">API Key</Label>
+                <Input
+                  id="api-key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your API key (required for most services)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  An API key is required for OpenAI services. Some local servers may not require a key.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model">Model</Label>
+                <Input
+                  id="model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="Model name (e.g., gpt-3.5-turbo, llama3, etc.)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Common models: gpt-3.5-turbo, gpt-4, llama-3-8b-instruct, mistral-7b-instruct, etc.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-messages">Max Previous Messages</Label>
+                <Input
+                  id="max-messages"
+                  type="number"
+                  value={maxMessages}
+                  onChange={(e) =>
+                    setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || DEFAULT_MAX_MESSAGES))
+                  }
+                  min={1}
+                  max={20}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum number of previous messages to include in the context (1-20).
+                </p>
+              </div>
+            </div>
+
+            {/* Image generation (optional) — TODO.MD #9; expandable section, starts collapsed */}
+            <div className="rounded-md border">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 p-3 text-left"
+                onClick={() => setImageSettingsOpen((open) => !open)}
+                aria-expanded={imageSettingsOpen}
+              >
+                {imageSettingsOpen ? (
+                  <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="text-sm font-medium">Image generation (optional)</span>
+                <span
+                  className={`ml-auto rounded-full px-2 py-0.5 text-xs ${
+                    imageApiUrl.trim()
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {imageApiUrl.trim() ? "On" : "Off"}
+                </span>
+              </button>
+              {imageSettingsOpen && (
+                <div className="space-y-3 border-t p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Ask the Dungeon Master to depict major scenes and character introductions.
+                    Leave the endpoint URL blank to turn this off entirely.
+                  </p>
+                  {imageFootprint !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {imageFootprint.count > 0
+                        ? `${imageFootprint.count} scene${imageFootprint.count === 1 ? "" : "s"} · ${formatBytes(
+                            imageFootprint.bytes,
+                          )} stored`
+                        : "No scene images stored yet."}
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="image-api-url">Image endpoint</Label>
+                    <Input
+                      id="image-api-url"
+                      value={imageApiUrl}
+                      onChange={(e) => setImageApiUrl(e.target.value)}
+                      placeholder="e.g. https://api.openai.com/v1/images/generations"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="image-api-key">Image API key (optional)</Label>
+                    <Input
+                      id="image-api-key"
+                      type="password"
+                      value={imageApiKey}
+                      onChange={(e) => setImageApiKey(e.target.value)}
+                      placeholder="Only if the image endpoint uses a different key — the chat key is used otherwise"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="image-model">Image model (optional)</Label>
+                    <Input
+                      id="image-model"
+                      value={imageModel}
+                      onChange={(e) => setImageModel(e.target.value)}
+                      placeholder="e.g. gpt-image-1, flux-1-schnell — leave blank for the provider default"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="image-rate">Min messages between images</Label>
+                      <Input
+                        id="image-rate"
+                        type="number"
+                        value={imageRate}
+                        onChange={(e) => setImageRate(clampImageRate(Number.parseInt(e.target.value)))}
+                        min={MIN_IMAGE_RATE}
+                        max={MAX_IMAGE_RATE}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        At least this many messages must pass between image requests (1-{MAX_IMAGE_RATE}).
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="image-size">Image size</Label>
+                      <Input
+                        id="image-size"
+                        value={imageSize}
+                        onChange={(e) => setImageSize(e.target.value)}
+                        placeholder="1280x720"
+                        title="Fixed render size (width x height) — e.g. 1280x720, 1024x1024, 1536x1024"
+                      />
+                      <p className="text-xs text-muted-foreground">Requested render size; 720p (1280x720) is a good default.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="custom-system-prompt">Custom System Prompt</Label>
+              <Textarea
+                id="custom-system-prompt"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Optional. Leave blank to use the built-in D&D Dungeon Master prompt, or enter your own to replace it…"
+                rows={6}
+                className="resize-y"
+              />
+              <p className="text-xs text-muted-foreground">
+                Only your own text lives here. When left blank the built-in Dungeon Master prompt is used
+                automatically and is never shown or pre-filled in this box.
+              </p>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button>Done</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
+    </div>
 
-      <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
-        <CardContent
-          className="flex-1 min-h-0 overflow-y-auto p-4"
-          ref={chatContentRef}
-        >
-          <MessageList
-            messages={messages}
-            showThinking={isLoading && !turnHasContent}
-            messagesEndRef={messagesEndRef}
-            onDeleteMessage={handleDeleteMessage}
-            onRegenerateMessage={handleRegenerateMessage}
-            regeneratingId={regeneratingId}
-            onEdit={startEdit}
-            editingId={editingId}
-            editDraft={editDraft}
-            onEditDraftChange={setEditDraft}
-            onSaveEdit={saveEdit}
-            onCancelEdit={cancelEdit}
-            inFlight={inFlight}
+    <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
+      <CardContent
+        className="flex-1 min-h-0 overflow-y-auto p-4"
+        ref={chatContentRef}
+      >
+        <MessageList
+          messages={messages}
+          showThinking={isLoading && !turnHasContent}
+          messagesEndRef={messagesEndRef}
+          onDeleteMessage={handleDeleteMessage}
+          onRegenerateMessage={handleRegenerateMessage}
+          regeneratingId={regeneratingId}
+          onEdit={startEdit}
+          editingId={editingId}
+          editDraft={editDraft}
+          onEditDraftChange={setEditDraft}
+          onSaveEdit={saveEdit}
+          onCancelEdit={cancelEdit}
+          inFlight={inFlight}
+        />
+      </CardContent>
+      <CardFooter className="border-t p-3">
+        <form onSubmit={handleSubmit} className="flex w-full items-end gap-2">
+          {/*
+            T2.1: multiline composer — players write sentences and paragraphs, not
+            one-liners. Auto-grows from 1 line to 6, then scrolls inside (the `rows`
+            attribute caps the height; native textarea overflow handles the rest).
+            Enter sends; Shift+Enter is a newline (kept explicit in the placeholder).
+          */}
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                void handleSubmit(e)
+              }
+            }}
+            rows={Math.min(6, Math.max(1, input === "" ? 1 : input.split("\n").length))}
+            placeholder="Type your message…  (Shift+Enter for a new line)"
+            disabled={inFlight}
+            className="flex-1 min-w-0 text-sm"
           />
-        </CardContent>
-        <CardFooter className="border-t p-3">
-          <form onSubmit={handleSubmit} className="flex w-full items-end gap-2">
-            {/*
-              T2.1: multiline composer — players write sentences and paragraphs, not
-              one-liners. Auto-grows from 1 line to 6, then scrolls inside (the `rows`
-              attribute caps the height; native textarea overflow handles the rest).
-              Enter sends; Shift+Enter is a newline (kept explicit in the placeholder).
-            */}
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  void handleSubmit(e)
-                }
-              }}
-              rows={Math.min(6, Math.max(1, input === "" ? 1 : input.split("\n").length))}
-              placeholder="Type your message…  (Shift+Enter for a new line)"
-              disabled={inFlight}
-              className="flex-1 min-w-0 text-sm"
-            />
-            {isLoading || regeneratingId !== null ? (
-              // TODO.MD #3.3: while a turn is running, Send becomes Stop
-              <Button type="button" variant="destructive" size="sm" onClick={handleStop}>
-                <SquareIcon className="h-4 w-4 mr-1" /> Stop
-              </Button>
-            ) : (
-              <Button type="submit" disabled={!input.trim() || inFlight} size="sm">
-                <SendIcon className="h-4 w-4 mr-1" /> Send
-              </Button>
-            )}
-          </form>
-        </CardFooter>
-      </Card>
+          {isLoading || regeneratingId !== null ? (
+            // TODO.MD #3.3: while a turn is running, Send becomes Stop.
+            // Mobile (below sm): icon-only — the label + its margin eat real
+            // width at phone scale, and the icon is self-explanatory.
+            <Button type="button" variant="destructive" size="sm" onClick={handleStop} aria-label="Stop generating">
+              <SquareIcon className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Stop</span>
+            </Button>
+          ) : (
+            <Button type="submit" disabled={!input.trim() || inFlight} size="sm" aria-label="Send message">
+              <SendIcon className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Send</span>
+            </Button>
+          )}
+        </form>
+      </CardFooter>
+    </Card>
 
-      {/* Confirmation dialog for clearing chat */}
-      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear Chat History</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to clear all chat messages? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleClearChat}>Clear</AlertDialogAction>
+    {/* Confirmation dialog for clearing chat */}
+    <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Clear Chat History</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to clear all chat messages? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleClearChat}>Clear</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
-    </TooltipProvider>
+    </div>
   )
 }

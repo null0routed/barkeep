@@ -42,8 +42,9 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
             setEditingSpell(null)
             setIsAddSpellOpen(true)
           }}
+          aria-label="Add spell"
         >
-          <PlusIcon className="h-4 w-4 mr-2" /> Add Spell
+          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Spell</span>
         </Button>
       </CardHeader>
       <CardContent>
@@ -81,11 +82,11 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                               </div>
                             )}
                           </div>
-                          <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" onClick={() => startEditingSpell(spell)}>
+                          <div className="flex flex-col gap-1 sm:flex-row">
+                            <Button size="icon" variant="ghost" aria-label="Edit spell" onClick={() => startEditingSpell(spell)}>
                               <EditIcon className="h-4 w-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeSpell(spell.id)}>
+                            <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove spell" onClick={() => removeSpell(spell.id)}>
                               <Trash2Icon className="h-4 w-4" />
                             </Button>
                           </div>

@@ -67,9 +67,10 @@ export default function PWAInstaller() {
   if (!isInstallable || isInstalled) return null
 
   return (
-    <Button onClick={handleInstallClick} className="gap-2">
-      <Download className="h-4 w-4" />
-      Install App
+    /* Mobile (below sm): icon-only to fit the tight phone header; aria-label keeps
+       it named ("Download" alone would read like a file download to screen readers). */
+    <Button onClick={handleInstallClick} className="gap-2" aria-label="Install Barkeep as an app">
+      <Download className="h-4 w-4" /> <span className="hidden sm:inline">Install App</span>
     </Button>
   )
 }

@@ -7,7 +7,7 @@
 // Next lint rule that nudges toward `next/image` for this component only.
 /* eslint-disable @next/next/no-img-element */
 
-import { memo, useCallback, useEffect, useState } from "react"
+import { memo, useCallback, useEffect, useRef, useState } from "react"
 import { ImageOffIcon, Loader2Icon, XIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { getImage, type StoredImage } from "@/lib/image-store"
@@ -59,12 +59,26 @@ const MessageImageRender = memo(({ id, alt }: MessageImageRenderProps) => {
     }
   }, [id])
 
-  // Lightbox close on Escape + lock page scroll while it is open (client-only; the
-  // overlay is never rendered on the server).
+  // Lightbox close on Escape + lock page scroll while it is open + focus
+  // management (T4.4): focus moves to the ✕ on open (remembering where the user
+  // was), back to it on close, and Tab/Shift+Tab stay on it — the ✕ is the only
+  // focusable thing in the dialog, so a full trap is just "redirect to ✕".
+  // (Client-only; the overlay is never rendered on the server.)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const lastFocusedRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (!lightboxOpen) return
+    lastFocusedRef.current = (document.activeElement as HTMLElement | null) ?? null
+    closeButtonRef.current?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightboxOpen(false)
+      if (e.key === "Escape") {
+        setLightboxOpen(false)
+        return
+      }
+      if (e.key === "Tab") {
+        e.preventDefault()
+        closeButtonRef.current?.focus()
+      }
     }
     window.addEventListener("keydown", onKey)
     const previousOverflow = document.body.style.overflow
@@ -72,6 +86,10 @@ const MessageImageRender = memo(({ id, alt }: MessageImageRenderProps) => {
     return () => {
       window.removeEventListener("keydown", onKey)
       document.body.style.overflow = previousOverflow
+      const lastFocused = lastFocusedRef.current
+      if (lastFocused && typeof document.contains === "function" && document.contains(lastFocused)) {
+        lastFocused.focus()
+      }
     }
   }, [lightboxOpen])
 
@@ -115,6 +133,7 @@ const MessageImageRender = memo(({ id, alt }: MessageImageRenderProps) => {
               />
             </div>
             <Button
+              ref={closeButtonRef}
               variant="ghost"
               size="icon"
               className="absolute right-4 top-4 z-20 bg-black/40 text-white hover:bg-black/60"

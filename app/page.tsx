@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { MoonIcon, SunIcon, SaveIcon, UploadIcon, InfoIcon, AlertTriangleIcon } from "lucide-react"
+import { MoreHorizontalIcon, AlertTriangleIcon } from "lucide-react"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
@@ -81,6 +81,29 @@ export default function Home() {
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   // Per-export API key decision (dialog) — see components/export-dialog.tsx
   const [exportOpen, setExportOpen] = useState(false)
+  // T4.3: the "More" header dropdown (Save now / Load from file… / Show instructions /
+  // theme toggle). Everything in it is TEXT — the icon ambiguity that made Save (disk)
+  // and Load (upload) look swappable is gone. Export lives OUTSIDE the menu, per the
+  // locked decision: it is the labeled data-safety CTA and must stay always visible.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false)
+      }
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreMenuOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [moreMenuOpen])
   const [maxMessages, setMaxMessages] = useState<number>(DEFAULT_MAX_MESSAGES)
 
   // Resizable split between the two panels (desktop only). panelRatio is the left
@@ -551,7 +574,7 @@ export default function Home() {
   if (!mounted) return null
 
   return (
-    <main className="container mx-auto p-3 max-w-[2200px] h-screen flex flex-col">
+    <main className="container mx-auto p-3 max-w-[2200px] flex flex-col lg:h-screen">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           {/* App icon (mug), not the 1.98 MB portrait logo — the badge renders at 40px,
@@ -559,20 +582,77 @@ export default function Home() {
           <Image src="/android-chrome-192x192.png" alt="Barkeep logo" width={40} height={40} className="rounded-md" />
           <h1 className="text-2xl font-bold">Barkeep</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <PWAInstaller />
-          <Button variant="outline" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            {theme === "dark" ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
-          </Button>
-          <Button variant="outline" size="icon" onClick={() => setInstructionsOpen(true)}>
-            <InfoIcon className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon" onClick={saveToLocalStorage}>
-            <SaveIcon className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon" onClick={loadFromFile}>
-            <UploadIcon className="h-4 w-4" />
-          </Button>
+          {/* T4.3: consolidated "More" menu (hand-rolled, no new dep — matches the
+              lightbox precedent). Closes on outside-click and Esc. */}
+          <div className="relative" ref={moreMenuRef}>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-haspopup="true"
+              aria-expanded={moreMenuOpen}
+              aria-label="More actions"
+              title="More actions"
+              onClick={() => setMoreMenuOpen((open) => !open)}
+            >
+              <MoreHorizontalIcon className="h-4 w-4" />
+            </Button>
+            {moreMenuOpen && (
+              <div
+                role="menu"
+                aria-label="More actions"
+                className="absolute top-full right-0 z-40 mt-2 w-56 rounded-md border bg-popover p-1 shadow-md"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    saveToLocalStorage()
+                  }}
+                >
+                  Save now
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    loadFromFile()
+                  }}
+                >
+                  Load from file…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    setInstructionsOpen(true)
+                  }}
+                >
+                  Show instructions
+                </button>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    setTheme(theme === "dark" ? "light" : "dark")
+                  }}
+                >
+                  Switch to {theme === "dark" ? "light" : "dark"} mode
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Locked decision: Export stays outside the menu — the labeled data-safety CTA. */}
           <Button size="sm" onClick={handleExport}>
             Export
           </Button>
@@ -597,12 +677,18 @@ export default function Home() {
         </div>
       )}
 
+      {/*
+        T4.1: below lg the two panels stack (chat first) and the PAGE scrolls —
+        main is content-height and this container flows normally. At lg+ the app
+        becomes a fixed viewport (lg:h-screen on main) with both panels scrolling
+        INTERNALLY, which is what needs flex-1 + overflow-hidden here.
+      */}
       <div
         ref={splitContainerRef}
-        className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden"
+        className="flex flex-col lg:flex-row gap-4 lg:flex-1 lg:overflow-hidden"
         style={{ "--split": `${panelRatio}%` } as React.CSSProperties}
       >
-        <div className="overflow-y-auto min-w-0 lg:[flex:1_1_var(--split)]">
+        <div className="overflow-y-auto min-w-0 order-2 lg:order-1 lg:[flex:1_1_var(--split)]">
           <CharacterSheet
             character={character}
             setCharacter={setCharacter}
@@ -622,13 +708,13 @@ export default function Home() {
           role="separator"
           aria-orientation="vertical"
           title="Drag to resize. Double-click to reset 50/50"
-          className="hidden lg:flex self-stretch w-1.5 cursor-col-resize touch-none items-center justify-center rounded-full bg-border transition-colors hover:bg-muted-foreground/40"
+          className="hidden lg:flex lg:order-2 self-stretch w-1.5 cursor-col-resize touch-none items-center justify-center rounded-full bg-border transition-colors hover:bg-muted-foreground/40"
           onPointerDown={startDividerDrag}
           onDoubleClick={resetDividerSplit}
         >
           <div className="h-10 w-0.5 rounded-full bg-muted-foreground/40" />
         </div>
-        <div className="min-w-0 flex flex-col lg:[flex:1_1_calc(100%-var(--split))]">
+        <div className="min-w-0 flex flex-col order-first lg:order-3 lg:[flex:1_1_calc(100%-var(--split))]">
           <ChatInterface
             messages={chatMessages}
             setMessages={setChatMessages}

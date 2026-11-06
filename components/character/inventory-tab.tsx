@@ -63,8 +63,10 @@ export default function InventoryTab({ character, setCharacter, editingInventory
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Inventory</CardTitle>
-        <Button onClick={() => setIsAddInventoryOpen(true)}>
-          <PlusIcon className="h-4 w-4 mr-2" /> Add Item
+        <Button onClick={() => setIsAddInventoryOpen(true)} aria-label="Add item">
+          {/* Mobile (below sm): icon-only, like the composer's Send — the labeled
+              header is crowded at phone scale; the aria-label keeps it named. */}
+          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Item</span>
         </Button>
       </CardHeader>
       <CardContent>
@@ -144,11 +146,11 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                         <div className="text-sm text-muted-foreground">{item.description}</div>
                       )}
                     </div>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => startEditingInventory(index)}>
+                    <div className="flex flex-col gap-1 sm:flex-row">
+                      <Button size="icon" variant="ghost" aria-label="Edit item" onClick={() => startEditingInventory(index)}>
                         <EditIcon className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeInventoryItem(index)}>
+                      <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove item" onClick={() => removeInventoryItem(index)}>
                         <Trash2Icon className="h-4 w-4" />
                       </Button>
                     </div>

@@ -26,8 +26,8 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Proficiencies</CardTitle>
-        <Button onClick={() => setIsAddProficiencyOpen(true)}>
-          <PlusIcon className="h-4 w-4 mr-2" /> Add Proficiency
+        <Button onClick={() => setIsAddProficiencyOpen(true)} aria-label="Add proficiency">
+          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Proficiency</span>
         </Button>
       </CardHeader>
       <CardContent>
@@ -44,7 +44,7 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
                       {proficiency.type.charAt(0).toUpperCase() + proficiency.type.slice(1)}
                     </Badge>
                   </div>
-                  <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" onClick={() => removeProficiency(proficiency.id)}>
+                  <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove proficiency" onClick={() => removeProficiency(proficiency.id)}>
                     <Trash2Icon className="h-4 w-4" />
                   </Button>
                 </div>
