@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,6 +12,8 @@ import { Badge } from "@/components/ui/badge"
 import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import type { CharacterData, InventoryItem, ItemRarity } from "@/lib/types"
 import { getRarityColor } from "./helpers"
+import TabFilter from "../tab-filter"
+import { itemMatches } from "@/lib/filter"
 
 interface InventoryTabProps {
   character: CharacterData
@@ -59,22 +62,46 @@ export default function InventoryTab({ character, setCharacter, editingInventory
     }
   }
 
+  // T5.1: per-tab name filter. The query lives here so only THIS tab re-renders on
+  // each keystroke. The list below stays the ORIGINAL array (skipping non-matches) —
+  // the row handlers (edit/delete) key off the true array index, which a filtered
+  // copy would not preserve.
+  const [filterQuery, setFilterQuery] = useState("")
+  const filtering = filterQuery.trim().length > 0
+  const visibleCount = filtering
+    ? character.inventory.filter((item) => itemMatches(item, filterQuery)).length
+    : character.inventory.length
+
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Inventory</CardTitle>
-        <Button onClick={() => setIsAddInventoryOpen(true)} aria-label="Add item">
-          {/* Mobile (below sm): icon-only, like the composer's Send — the labeled
-              header is crowded at phone scale; the aria-label keeps it named. */}
-          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Item</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <TabFilter
+            noun="items"
+            query={filterQuery}
+            onQueryChange={setFilterQuery}
+            matched={visibleCount}
+            total={character.inventory.length}
+          />
+          <Button onClick={() => setIsAddInventoryOpen(true)} aria-label="Add item">
+            {/* Mobile (below sm): icon-only, like the composer's Send — the labeled
+                header is crowded at phone scale; the aria-label keeps it named. */}
+            <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Item</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {character.inventory.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">No items in inventory</div>
+          ) : visibleCount === 0 ? (
+            <div className="text-center py-4 text-muted-foreground">
+              No matches for “{filterQuery.trim()}”
+            </div>
           ) : (
-            character.inventory.map((item, index) => (
+            character.inventory.map((item, index) =>
+              filtering && !itemMatches(item, filterQuery) ? null : (
               <div key={index} className="flex items-center justify-between border-b pb-2">
                 {editingInventoryIndex === index ? (
                   <div className="flex-1 space-y-2">

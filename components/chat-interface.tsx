@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect, useCallback, memo } from "react"
+import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -48,6 +48,7 @@ import { buildSystemMessageBase } from "@/lib/system-prompt"
 import { collectLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
 import { formatNotesForContext } from "@/lib/campaign-notes"
+import { estimateContextTokens, formatTokenCount } from "@/lib/context-estimate"
 import {
   clampImageRate,
   MIN_IMAGE_RATE,
@@ -453,6 +454,53 @@ const MessageList = memo(
 
 MessageList.displayName = "MessageList"
 
+/**
+ * Assembles the system message for one turn (T5.2). Module scope so it is the single
+ * source of truth for the turn's context: `callApi` sends exactly this, and the
+ * settings dialog's context estimate is built from the same helper — so the two can
+ * never drift apart.
+ *
+ * What goes in: the built-in DM prompt or the owner's custom one (TODO #7), campaign
+ * notes when opted in (T2.3), the latest saved checkpoint block when one exists, the
+ * tool instructions, and the scene-image guidance — the last only when an image
+ * endpoint is configured (TODO #9; blank URL means the feature is entirely off).
+ */
+function buildTurnSystemMessage(params: {
+  systemPrompt: string
+  notesInContext: boolean
+  campaignNotes: CampaignNotes
+  campaignCheckpoints: CampaignCheckpoint[]
+  imageEnabled: boolean
+}): string {
+  const { systemPrompt, notesInContext, campaignNotes, campaignCheckpoints, imageEnabled } = params
+
+  const toolInstructions = `
+You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
+Use this tool when you need to reference the character's stats, abilities, inventory, or other details.
+DO NOT mention that you're using this tool to the player - just incorporate the information naturally in your responses.
+
+You also have two tools for long-term campaign memory, because older chat messages eventually drop out of your context:
+- saveCampaignCheckpoint: call it at natural stopping points, such as the end of a scene, arrival at a new location, a major decision or revelation, a quest starting or finishing, or when the player says they are wrapping up. Record where the story stands and what you would need to pick it back up later. Do not save a checkpoint after every message.
+- getCampaignCheckpoints: call it when a conversation begins or resumes with little prior context, when the player asks for a recap or says they are continuing, or when you are unsure about earlier events.
+DO NOT mention these tools to the player - use them quietly and just continue the story.
+`
+
+  const imageInstructions = imageEnabled
+    ? `\nYou can depict major moments with the ${IMAGE_TOOL_NAME} tool. For a significant scene change, arriving in a new location, or the introduction of an important character, you MAY generate one image to set the scene. Use it sparingly — only for these major moments — because it is rate-limited; for everything else rely on your written narration. When the tool confirms the image was shown, trust that the player can see it: continue the story rather than re-describing it.
+`
+    : ""
+
+  // The custom prompt wins if set, otherwise the built-in DM prompt (TODO #7),
+  // plus the loot-capture section appended to BOTH (TODO #8 — owner decision).
+  return `${buildSystemMessageBase(systemPrompt)}\n\n${
+    notesInContext ? formatNotesForContext(campaignNotes) : ""
+  }${
+    campaignCheckpoints.length > 0
+      ? `CAMPAIGN CONTEXT (from the latest saved checkpoint):\n${formatCheckpoint(campaignCheckpoints[campaignCheckpoints.length - 1])}\n\n`
+      : ""
+  }${toolInstructions}${imageInstructions}\nPlease keep this context in mind when responding.`
+}
+
 export default function ChatInterface({
   messages,
   setMessages,
@@ -505,6 +553,23 @@ export default function ChatInterface({
   const containerRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // T5.2: context-size transparency. Rough estimate (~4 chars/token + 4/message) of
+  // what the NEXT turn will send: the same resolved system message callApi uses
+  // (buildTurnSystemMessage) plus the last `maxMessages` of history — the exact
+  // window callApi slices before sending. Shown under "Max Previous Messages" in
+  // the settings dialog so "context length exceeded" becomes a number you can act
+  // on (lower the limit, trim the prompt/notes) instead of a mystery.
+  const contextEstimate = useMemo(() => {
+    const systemMessage = buildTurnSystemMessage({
+      systemPrompt,
+      notesInContext,
+      campaignNotes,
+      campaignCheckpoints,
+      imageEnabled: imageApiUrl.trim().length > 0,
+    })
+    return estimateContextTokens(systemMessage, messages.slice(-maxMessages))
+  }, [systemPrompt, notesInContext, campaignNotes, campaignCheckpoints, imageApiUrl, messages, maxMessages])
 
   // Loot capture (TODO #8, T8.1): pull barkeep-loot fences out of assistant messages
   // and hand them to the page-level store (state lives in app/page.tsx). Processing
@@ -744,38 +809,19 @@ export default function ChatInterface({
     async (conversation: ChatMessage[], onDelta?: (content: string) => void): Promise<AssistantTurn> => {
       try {
         const startedAt = Date.now()
-        // Prepare the system message with the header summary and tool instructions
-        const toolInstructions = `
-You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
-Use this tool when you need to reference the character's stats, abilities, inventory, or other details.
-DO NOT mention that you're using this tool to the player - just incorporate the information naturally in your responses.
-
-You also have two tools for long-term campaign memory, because older chat messages eventually drop out of your context:
-- saveCampaignCheckpoint: call it at natural stopping points, such as the end of a scene, arrival at a new location, a major decision or revelation, a quest starting or finishing, or when the player says they are wrapping up. Record where the story stands and what you would need to pick it back up later. Do not save a checkpoint after every message.
-- getCampaignCheckpoints: call it when a conversation begins or resumes with little prior context, when the player asks for a recap or says they are continuing, or when you are unsure about earlier events.
-DO NOT mention these tools to the player - use them quietly and just continue the story.
-`
-
-        // Scene image (TODO.MD #9): the generateImage tool and its guidance are only
-        // advertised when the owner has configured an image endpoint — blank means the
-        // feature is entirely off (no tool, no instruction, no cost).
+        // Prepare the system message — the shared helper above is the single source
+        // of truth (T5.2), so the settings dialog's estimate tracks exactly what is
+        // sent. `imageEnabled` doubles as the gate for advertising the image TOOL.
         const imageEnabled = imageApiUrl.trim().length > 0
-        const imageInstructions = imageEnabled
-          ? `\nYou can depict major moments with the ${IMAGE_TOOL_NAME} tool. For a significant scene change, arriving in a new location, or the introduction of an important character, you MAY generate one image to set the scene. Use it sparingly — only for these major moments — because it is rate-limited; for everything else rely on your written narration. When the tool confirms the image was shown, trust that the player can see it: continue the story rather than re-describing it.
-`
-          : ""
-
         const systemMessage = {
           role: "system",
-          // The custom prompt wins if set, otherwise the built-in DM prompt (TODO #7),
-          // plus the loot-capture section appended to BOTH (TODO #8 — owner decision).
-          content: `${buildSystemMessageBase(systemPrompt)}\n\n${
-            notesInContext ? formatNotesForContext(campaignNotes) : ""
-          }${
-            campaignCheckpoints.length > 0
-              ? `CAMPAIGN CONTEXT (from the latest saved checkpoint):\n${formatCheckpoint(campaignCheckpoints[campaignCheckpoints.length - 1])}\n\n`
-              : ""
-          }${toolInstructions}${imageInstructions}\nPlease keep this context in mind when responding.`,
+          content: buildTurnSystemMessage({
+            systemPrompt,
+            notesInContext,
+            campaignNotes,
+            campaignCheckpoints,
+            imageEnabled,
+          }),
         }
 
         // Prepare the messages for the API — `conversation` is the full ordered
@@ -1256,6 +1302,14 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                 />
                 <p className="text-xs text-muted-foreground">
                   Maximum number of previous messages to include in the context (1-20).
+                </p>
+                {/* T5.2: live estimate of the next turn's context size (resolved system
+                    message + the last N messages, exactly how callApi assembles it). */}
+                <p className="text-xs text-muted-foreground" aria-live="polite">
+                  ≈ {formatTokenCount(contextEstimate.total)} tokens with the latest{" "}
+                  {Math.min(maxMessages, messages.length)} message
+                  {Math.min(maxMessages, messages.length) === 1 ? "" : "s"} — the system
+                  prompt alone is ≈ {formatTokenCount(contextEstimate.systemTokens)}.
                 </p>
               </div>
             </div>

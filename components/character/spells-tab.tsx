@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -10,6 +11,8 @@ import { Button } from "@/components/ui/button"
 import { EditIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import type { CharacterData, Spell } from "@/lib/types"
 import { formatSpellLevel, getSpellSchoolColor } from "./helpers"
+import TabFilter from "../tab-filter"
+import { itemMatches } from "@/lib/filter"
 
 interface SpellsTabProps {
   character: CharacterData
@@ -33,28 +36,52 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
     }))
   }
 
+  // T5.1: per-tab name filter. Row handlers key off spell.id (not the index), so it
+  // is safe to filter the per-level group arrays — empty groups then hide themselves
+  // via the existing length check, which also retires their level headers.
+  const [filterQuery, setFilterQuery] = useState("")
+  const filtering = filterQuery.trim().length > 0
+  const visibleCount = filtering
+    ? character.spells.filter((spell) => itemMatches(spell, filterQuery)).length
+    : character.spells.length
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Spells</CardTitle>
-        <Button
-          onClick={() => {
-            setEditingSpell(null)
-            setIsAddSpellOpen(true)
-          }}
-          aria-label="Add spell"
-        >
-          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Spell</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <TabFilter
+            noun="spells"
+            query={filterQuery}
+            onQueryChange={setFilterQuery}
+            matched={visibleCount}
+            total={character.spells.length}
+          />
+          <Button
+            onClick={() => {
+              setEditingSpell(null)
+              setIsAddSpellOpen(true)
+            }}
+            aria-label="Add spell"
+          >
+            <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Spell</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {character.spells.length === 0 ? (
           <div className="text-center py-4 text-muted-foreground">No spells</div>
+        ) : visibleCount === 0 ? (
+          <div className="text-center py-4 text-muted-foreground">
+            No matches for “{filterQuery.trim()}”
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Group spells by level */}
             {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((level) => {
-              const spellsAtLevel = character.spells.filter((spell) => spell.level === level)
+              const spellsAtLevel = character.spells.filter(
+                (spell) => spell.level === level && (!filtering || itemMatches(spell, filterQuery)),
+              )
               if (spellsAtLevel.length === 0) return null
 
               return (

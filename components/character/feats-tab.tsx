@@ -2,12 +2,15 @@
 
 import type React from "react"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import type { CharacterData, Feat } from "@/lib/types"
+import TabFilter from "../tab-filter"
+import { itemMatches } from "@/lib/filter"
 
 interface FeatsTabProps {
   character: CharacterData
@@ -50,20 +53,43 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
     }
   }
 
+  // T5.1: per-tab name filter (query lives here, so only this tab re-renders).
+  // Rendering stays on the ORIGINAL array and skips non-matches, keeping the true
+  // array indices the edit/delete handlers rely on.
+  const [filterQuery, setFilterQuery] = useState("")
+  const filtering = filterQuery.trim().length > 0
+  const visibleCount = filtering
+    ? character.feats.filter((feat) => itemMatches(feat, filterQuery)).length
+    : character.feats.length
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Feats</CardTitle>
-        <Button onClick={() => setIsAddFeatOpen(true)} aria-label="Add feat">
-          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Feat</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <TabFilter
+            noun="feats"
+            query={filterQuery}
+            onQueryChange={setFilterQuery}
+            matched={visibleCount}
+            total={character.feats.length}
+          />
+          <Button onClick={() => setIsAddFeatOpen(true)} aria-label="Add feat">
+            <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Feat</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {character.feats.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">No feats</div>
+          ) : visibleCount === 0 ? (
+            <div className="text-center py-4 text-muted-foreground">
+              No matches for “{filterQuery.trim()}”
+            </div>
           ) : (
-            character.feats.map((feat, index) => (
+            character.feats.map((feat, index) =>
+              filtering && !itemMatches(feat, filterQuery) ? null : (
               <div key={feat.id} className="border rounded-md p-3">
                 {editingFeatIndex === index ? (
                   <div className="space-y-2">

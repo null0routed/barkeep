@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import type { CharacterData, Equipment, ItemRarity } from "@/lib/types"
 import { getRarityColor } from "./helpers"
+import TabFilter from "../tab-filter"
+import { itemMatches } from "@/lib/filter"
 
 interface EquipmentTabProps {
   character: CharacterData
@@ -73,20 +76,43 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
     }
   }
 
+  // T5.1: per-tab name filter (query lives here, so only this tab re-renders).
+  // Rendering stays on the ORIGINAL array and skips non-matches, keeping the true
+  // array indices the edit/delete handlers rely on.
+  const [filterQuery, setFilterQuery] = useState("")
+  const filtering = filterQuery.trim().length > 0
+  const visibleCount = filtering
+    ? character.equipment.filter((item) => itemMatches(item, filterQuery)).length
+    : character.equipment.length
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between px-3 py-2 card-header-compact">
         <CardTitle className="text-base">Equipment</CardTitle>
-        <Button onClick={() => setIsAddEquipmentOpen(true)} aria-label="Add equipment">
-          <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Equipment</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <TabFilter
+            noun="equipment"
+            query={filterQuery}
+            onQueryChange={setFilterQuery}
+            matched={visibleCount}
+            total={character.equipment.length}
+          />
+          <Button onClick={() => setIsAddEquipmentOpen(true)} aria-label="Add equipment">
+            <PlusIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Equipment</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {character.equipment.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">No equipment items</div>
+          ) : visibleCount === 0 ? (
+            <div className="text-center py-4 text-muted-foreground">
+              No matches for “{filterQuery.trim()}”
+            </div>
           ) : (
-            character.equipment.map((item, index) => (
+            character.equipment.map((item, index) =>
+              filtering && !itemMatches(item, filterQuery) ? null : (
               <div key={index} className="flex items-center justify-between border-b pb-2">
                 {editingEquipmentIndex === index ? (
                   <div className="flex-1 space-y-2">
