@@ -58,12 +58,14 @@ import {
   createImageRateLimiter,
   type ImageRateLimiter,
 } from "@/lib/image-gen"
-import { putImage, deleteImage, clearImages } from "@/lib/image-store"
+import { putImage, deleteImage, clearImages, imageStoreFootprint } from "@/lib/image-store"
+import { formatBytes } from "@/lib/storage-budget"
 import {
   buildStats,
   extractThinking,
   isAbortError,
   mergeUsage,
+  readErrorDetail,
   statsLines,
   type ApiUsage,
   type AssistantTurn,
@@ -119,6 +121,17 @@ interface ChatInterfaceProps {
 // Default number of previous messages included in the model context (also the shared
 // initial state in app/page.tsx — was inconsistently 6 here vs 10 there)
 export const DEFAULT_MAX_MESSAGES = 10
+
+/**
+ * T1.3: toast the real reason when the turn failed at the API itself (the error we
+ * throw carries the provider's explanation, e.g. "API error: 401 — Invalid API key");
+ * otherwise keep the generic actionable wording. Module-level so the turn callbacks
+ * can use it without adding an unstable dep.
+ */
+function toastForTurnError(error: unknown, fallback: string): void {
+  const message = error instanceof Error ? error.message : ""
+  toast.error(message.startsWith("API error") ? message : fallback)
+}
 
 // Static tool definition (module scope keeps its identity stable across renders —
 // same pattern as campaignCheckpointTools in lib/campaign-checkpoints.ts)
@@ -330,7 +343,7 @@ ChatMessageComponent.displayName = "ChatMessage"
 const MessageList = memo(
   ({
     messages,
-    isLoading,
+    showThinking,
     messagesEndRef,
     onDeleteMessage,
     onRegenerateMessage,
@@ -344,7 +357,7 @@ const MessageList = memo(
     inFlight,
   }: {
     messages: ChatMessage[]
-    isLoading: boolean
+    showThinking: boolean
     messagesEndRef: React.RefObject<HTMLDivElement | null>
     onDeleteMessage: (id: string) => void
     onRegenerateMessage: (id: string) => void
@@ -364,24 +377,32 @@ const MessageList = memo(
             No messages yet. Start a conversation with your AI assistant!
           </div>
         ) : (
-          messages.map((message) => (
-            <ChatMessageComponent
-              key={message.id}
-              message={message}
-              onDelete={onDeleteMessage}
-              onRegenerate={message.role === "assistant" ? onRegenerateMessage : undefined}
-              isRegenerating={regeneratingId === message.id}
-              onEdit={message.role === "user" ? onEdit : undefined}
-              isEditing={editingId === message.id}
-              editDraft={editDraft}
-              onEditDraftChange={onEditDraftChange}
-              onSaveEdit={onSaveEdit}
-              onCancelEdit={onCancelEdit}
-              inFlight={inFlight}
-            />
-          ))
+          messages.map((message) => {
+            // T1.1: each bubble must keep STABLE props when it is not the edit target,
+            // or its memo() is defeated — and every keystroke in the inline editor
+            // (whose onChange recreates `saveEdit` and mutates `editDraft`) would
+            // re-render and re-parse the markdown of the ENTIRE history. Scope the
+            // edit state to the edited bubble only; everyone else gets stable undefined.
+            const isEditTarget = editingId === message.id
+            return (
+              <ChatMessageComponent
+                key={message.id}
+                message={message}
+                onDelete={onDeleteMessage}
+                onRegenerate={message.role === "assistant" ? onRegenerateMessage : undefined}
+                isRegenerating={regeneratingId === message.id}
+                onEdit={message.role === "user" ? onEdit : undefined}
+                isEditing={isEditTarget}
+                editDraft={isEditTarget ? editDraft : undefined}
+                onEditDraftChange={isEditTarget ? onEditDraftChange : undefined}
+                onSaveEdit={isEditTarget ? onSaveEdit : undefined}
+                onCancelEdit={isEditTarget ? onCancelEdit : undefined}
+                inFlight={inFlight}
+              />
+            )
+          })
         )}
-        {isLoading && (
+        {showThinking && (
           <div className="flex justify-start">
             <div className="max-w-[85%] max-w-3xl rounded-lg p-3 bg-muted animate-pulse text-sm">Thinking...</div>
           </div>
@@ -426,11 +447,18 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  // T1.2: true once the current turn has produced visible content. The "Thinking…"
+  // placeholder then only shows while the turn is still silent (pre-LLM latency, the
+  // tool round-trip, image generation) — never below a bubble that is already typing.
+  const [turnHasContent, setTurnHasContent] = useState(false)
   const [chatHeight, setChatHeight] = useState(600)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
   // Settings dialog: the image-generation block is an expandable section that starts
   // collapsed (owner 2026-11-05) so the dialog stays focused on the chat settings.
   const [imageSettingsOpen, setImageSettingsOpen] = useState(false)
+  // T1.4: stored scene-image footprint (count + bytes), loaded when the dialog opens —
+  // the per-image 4 MB cap exists but the TOTAL was otherwise invisible.
+  const [imageFootprint, setImageFootprint] = useState<{ count: number; bytes: number } | null>(null)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   // TODO.MD #3.2: the user message currently in inline edit, and its draft text
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -485,6 +513,13 @@ export default function ChatInterface({
   useEffect(() => {
     imageRateLimiterRef.current = createImageRateLimiter(imageRate)
   }, [imageRate])
+
+  // T1.4: refresh the stored scene footprint on each dialog open (one cheap IDB read;
+  // resolves a clean result even where IndexedDB is unavailable).
+  const refreshImageFootprint = useCallback(async () => {
+    const result = await imageStoreFootprint()
+    setImageFootprint(result.ok && result.value ? result.value : null)
+  }, [])
 
   // Calculate and set the chat height based on window size
   const updateChatHeight = useCallback(() => {
@@ -727,7 +762,10 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           })
 
           if (!response.ok) {
-            throw new Error(`API error: ${response.status}`)
+            // T1.3: surface the provider's own explanation (bad key, context overflow,
+            // unknown model, ...) — the status line alone leaves the user guessing.
+            const detail = await readErrorDetail(response)
+            throw new Error(detail ? `API error: ${response.status} — ${detail}` : `API error: ${response.status}`)
           }
 
           const contentType = response.headers.get("content-type") ?? ""
@@ -866,8 +904,10 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   const runAssistant = useCallback(
     async (conversation: ChatMessage[], bubbleId?: string) => {
       const id = bubbleId ?? crypto.randomUUID()
+      setTurnHasContent(false)
 
       const upsertContent = (content: string) => {
+        if (content) setTurnHasContent(true)
         setMessages((prev) => {
           const index = prev.findIndex((message) => message.id === id)
           if (index === -1) {
@@ -937,7 +977,8 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         console.error("Error calling API:", error)
         // Ephemeral notification only — never persist error text into history, where it
         // would be replayed into model context on every subsequent request
-        toast.error(
+        toastForTurnError(
+          error,
           "Sorry, there was an error processing your request. Please check your API settings and try again.",
         )
       } finally {
@@ -1002,7 +1043,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           return
         }
         console.error("Error regenerating message:", error)
-        toast.error("Sorry, the response could not be regenerated.")
+        toastForTurnError(error, "Sorry, the response could not be regenerated.")
       } finally {
         setRegeneratingId(null)
       }
@@ -1057,7 +1098,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           return
         }
         console.error("Error re-submitting chat after edit:", error)
-        toast.error("Sorry, the edited chat could not be re-run.")
+        toastForTurnError(error, "Sorry, the edited chat could not be re-run.")
       } finally {
         setIsLoading(false)
       }
@@ -1098,7 +1139,11 @@ DO NOT mention these tools to the player - use them quietly and just continue th
           >
             <TrashIcon className="h-4 w-4" />
           </Button>
-          <Dialog>
+          <Dialog
+            onOpenChange={(open) => {
+              if (open) void refreshImageFootprint()
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="outline" size="icon" title="Chat settings">
                 <SettingsIcon className="h-4 w-4" />
@@ -1195,6 +1240,15 @@ DO NOT mention these tools to the player - use them quietly and just continue th
                       Ask the Dungeon Master to depict major scenes and character introductions.
                       Leave the endpoint URL blank to turn this off entirely.
                     </p>
+                    {imageFootprint !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        {imageFootprint.count > 0
+                          ? `${imageFootprint.count} scene${imageFootprint.count === 1 ? "" : "s"} · ${formatBytes(
+                              imageFootprint.bytes,
+                            )} stored`
+                          : "No scene images stored yet."}
+                      </p>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="image-api-url">Image endpoint</Label>
                       <Input
@@ -1287,7 +1341,7 @@ DO NOT mention these tools to the player - use them quietly and just continue th
         >
           <MessageList
             messages={messages}
-            isLoading={isLoading}
+            showThinking={isLoading && !turnHasContent}
             messagesEndRef={messagesEndRef}
             onDeleteMessage={handleDeleteMessage}
             onRegenerateMessage={handleRegenerateMessage}

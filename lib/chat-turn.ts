@@ -146,6 +146,60 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError"
 }
 
+/**
+ * Pull a human-readable line out of a provider error body (T1.3 follow-up).
+ * Structured shapes, in priority order: OpenAI/Anthropic/OpenRouter-style
+ * `{"error":{"message":"..."}}`, the `{"error":"..."}` shorthand (Ollama's), and a
+ * top-level `{"message":"..."}`. Anything unparseable or without those fields is
+ * returned as-is (already trimmed), so no information a provider *chose* to send
+ * as plain text is ever lost.
+ */
+function extractErrorMessageFromBody(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{")) return trimmed
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (typeof parsed === "object" && parsed !== null) {
+      const record = parsed as Record<string, unknown>
+      const error = record.error
+      if (typeof error === "string" && error.length > 0) return error
+      if (typeof error === "object" && error !== null) {
+        const inner = (error as Record<string, unknown>).message
+        if (typeof inner === "string" && inner.length > 0) return inner
+      }
+      if (typeof record.message === "string" && (record.message as string).length > 0) {
+        return record.message as string
+      }
+    }
+  } catch {
+    // Not valid JSON (or a truncated body) — fall through to the raw text.
+  }
+  return trimmed
+}
+
+/**
+ * Read the leading part of an HTTP error response body for diagnostics (T1.3).
+ *
+ * Providers — local model hosts especially — often explain the failure in the body
+ * (invalid key, context-length exceeded, unknown model) while the status line alone
+ * says nothing. When the body is a known shaped JSON error document, the human
+ * `message` field is extracted (see extractErrorMessageFromBody); otherwise the
+ * leading, trimmed, capped text is used. The result is capped so a giant error
+ * document can't bloat a toast, and the function NEVER throws: an unreadable or
+ * missing body is "".
+ */
+export async function readErrorDetail(
+  response: { text?: () => Promise<string> },
+  cap = 300,
+): Promise<string> {
+  try {
+    const text = await response.text?.()
+    return typeof text === "string" ? extractErrorMessageFromBody(text).slice(0, cap) : ""
+  } catch {
+    return ""
+  }
+}
+
 /** One labelled row for the stats tooltip (TODO.MD #3.4). */
 export interface StatLine {
   label: string

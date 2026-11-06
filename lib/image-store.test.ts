@@ -9,6 +9,7 @@ import {
   getImage,
   deleteImage,
   clearImages,
+  imageStoreFootprint,
   MAX_IMAGE_BYTES,
   type StoredImage,
 } from "./image-store"
@@ -57,4 +58,10 @@ test("getImage reports a clean no-idb result in Node", async () => {
 test("deleteImage and clearImages report a clean no-idb result in Node", async () => {
   assert.equal((await deleteImage("img-1")).reason, "no-idb")
   assert.equal((await clearImages()).reason, "no-idb")
+})
+
+test("imageStoreFootprint reports a clean no-idb result in Node", async () => {
+  const result = await imageStoreFootprint()
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, "no-idb")
 })

@@ -190,3 +190,44 @@ export async function clearImages(): Promise<IdbResult<void>> {
     return { ok: false, reason: "no-idb" }
   }
 }
+
+/**
+ * Snapshot of the image store for UI display (T1.4): how many scene images are
+ * stored and their combined estimated size. The per-image 4 MB budget exists, but
+ * the TOTAL was previously invisible — a long campaign can accumulate many scenes,
+ * so the settings UI reports both numbers. Resolves `{ ok: false, reason: "no-idb" }`
+ * like every other operation when IndexedDB is unavailable.
+ */
+export async function imageStoreFootprint(): Promise<IdbResult<{ count: number; bytes: number }>> {
+  if (!hasIdb()) return { ok: false, reason: "no-idb" }
+  let db: IDBDatabase | undefined
+  try {
+    db = await openDb()
+    return await new Promise<IdbResult<{ count: number; bytes: number }>>((resolve) => {
+      const tx = db!.transaction(STORE, "readonly")
+      const allRequest = tx.objectStore(STORE).getAll()
+      allRequest.onsuccess = () => {
+        db!.close()
+        const images = (allRequest.result as StoredImage[] | undefined) ?? []
+        resolve({
+          ok: true,
+          value: {
+            count: images.length,
+            bytes: images.reduce((sum, item) => sum + estimateImageBytes(item.src), 0),
+          },
+        })
+      }
+      allRequest.onerror = () => {
+        db!.close()
+        resolve({ ok: false, reason: allRequest.error?.message ?? "read-failed" })
+      }
+      tx.onabort = () => {
+        db!.close()
+        resolve({ ok: false, reason: "aborted" })
+      }
+    })
+  } catch {
+    db?.close()
+    return { ok: false, reason: "no-idb" }
+  }
+}

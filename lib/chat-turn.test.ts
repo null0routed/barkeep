@@ -6,6 +6,7 @@ import {
   extractThinking,
   isAbortError,
   mergeUsage,
+  readErrorDetail,
   statsLines,
   toAssistantTurn,
   type ApiUsage,
@@ -121,6 +122,54 @@ test("isAbortError distinguishes user aborts from real failures", () => {
   assert.equal(isAbortError(plain), true) // name is what browsers set; both are aborts
   assert.equal(isAbortError("abort string"), false)
   assert.equal(isAbortError(null), false)
+})
+
+test("readErrorDetail trims and caps the body, and never throws", async () => {
+  const long = "x".repeat(500)
+  assert.equal(await readErrorDetail({ text: async () => long }), "x".repeat(300))
+  assert.equal(await readErrorDetail({ text: async () => "  invalid api key  " }), "invalid api key")
+  assert.equal(await readErrorDetail({}), "")
+  assert.equal(await readErrorDetail(null as unknown as { text?: () => Promise<string> }), "")
+  assert.equal(
+    await readErrorDetail({
+      text: async () => {
+        throw new Error("body unreadable (e.g. already consumed)")
+      },
+    }),
+    "",
+  )
+})
+
+test("readErrorDetail extracts the provider's message field from structured JSON bodies", async () => {
+  // OpenAI shape (the 401 that motivated the extraction)
+  const openai = JSON.stringify({
+    error: {
+      message: "Incorrect API key provided. You can find your API key at https://platform.openai.com/account/api-keys.",
+      type: "invalid_request_error",
+      param: null,
+      code: "invalid_api_key",
+    },
+  })
+  assert.equal(
+    await readErrorDetail({ text: async () => openai }),
+    "Incorrect API key provided. You can find your API key at https://platform.openai.com/account/api-keys.",
+  )
+  // {"error": "..."} shorthand (Ollama's)
+  assert.equal(await readErrorDetail({ text: async () => '{"error":"model \'x\' not found"}' }), "model 'x' not found")
+  // top-level {"message": "..."}
+  assert.equal(await readErrorDetail({ text: async () => '{"message":"Model not found"}' }), "Model not found")
+})
+
+test("readErrorDetail keeps unstructured bodies as-is", async () => {
+  assert.equal(await readErrorDetail({ text: async () => "gateway error" }), "gateway error")
+})
+
+test("readErrorDetail reads a real Response body (Node 24 global)", async () => {
+  const res = new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
+    status: 401,
+    headers: { "content-type": "application/json" },
+  })
+  assert.equal(await readErrorDetail(res), "Invalid API key")
 })
 
 test("statsLines renders present fields and skips absent ones", () => {
