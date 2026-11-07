@@ -668,14 +668,39 @@ export default function Home() {
         <div className="flex items-center gap-2">
           {/* App icon (mug), not the 1.98 MB portrait logo — the badge renders at 40px,
               so the 35.8 KB 192px variant is 4.8x supersampled and 1/8 the download. */}
-          <Image src="/android-chrome-192x192.png" alt="Barkeep logo" width={40} height={40} className="rounded-md" />
+          {/* App icon (mug), not the 1.98 MB portrait logo — the badge renders at 48px,
+              so the 35.8 KB 192px variant is 4x supersampled and 1/8 the download.
+              The mug badge's brown square is inset 0.25px from the canvas and its corner
+              radius is 31/192 of the canvas (7.75px at 48px). The stroke below is an SVG
+              path drawn on that exact geometry (ring/outline follow the CSS box, which
+              is NOT the badge, leaving a cream sliver at the seam) — so it hugs the
+              badge with no background bleed. */}
+          <span className="relative inline-block rounded-[8.75px] dark:shadow-[0_0_12px_0_hsl(var(--ring)/0.35)]">
+            <Image src="/android-chrome-192x192.png" alt="Barkeep logo" width={48} height={48} />
+            <svg
+              aria-hidden
+              className="pointer-events-none absolute inset-0 h-12 w-12 overflow-visible"
+              viewBox="0 0 48 48"
+            >
+              <rect
+                x="0.25"
+                y="0.25"
+                width="47.5"
+                height="47.5"
+                rx="7.75"
+                fill="none"
+                strokeWidth="2"
+                style={{ stroke: "hsl(var(--ring))" }}
+              />
+            </svg>
+          </span>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold leading-tight">Barkeep</h1>
             {/* The copyright lives with the brand (titlebar-style) instead of as an
                 orphan line under the panels — which also used to sit over the chat
                 input. Hidden below sm, where the header stays icon-compact (it's still
-                in the About dialog on phones). */}
-            <span className="hidden text-xs leading-tight text-muted-foreground sm:inline">
+                in the About dialog on phones). Cinzel + all caps to match the h1. */}
+            <span className="hidden text-xs leading-tight text-muted-foreground font-display uppercase tracking-[0.08em] sm:inline">
               © {new Date().getFullYear()} Barkeep.cloudkern.com
             </span>
           </div>
