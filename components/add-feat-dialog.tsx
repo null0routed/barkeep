@@ -6,27 +6,45 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
+import { Loader2Icon, WandIcon } from "lucide-react"
 import type { Feat, ChatMessage } from "@/lib/types"
+import { extractItemFields } from "@/lib/item-generator"
+import { buildGenerationContext, buildGeneratorMessages } from "@/lib/item-seed"
+import { resolveSystemPrompt } from "@/lib/system-prompt"
+
+// How long to wait for the model before giving up. 60 s on purpose (owner decision,
+// Phase B): slow endpoints — and local models (e.g. Ollama) still loading in — get
+// time to answer instead of a bare "aborted" error. Mirrors add-item-dialog.tsx.
+const GENERATION_TIMEOUT_MS = 60_000
 
 interface AddFeatDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onAdd: (feat: Feat) => void
-  // T3.2: stable read-through accessor instead of a live array — the memoized
-  // sheet skips re-rendering while a turn streams, and the "Pull from chat" list
-  // resolves the current history at render time.
+  apiUrl?: string
+  apiKey?: string
+  model?: string
+  // "Generate Details" context (TODO.MD #20): the chat history the feat may have
+  // been presented through — resolved the moment generation runs (T3.2 accessor).
   getChatMessages: () => ChatMessage[]
+  // The player's custom DM prompt ("" = built-in) carries the campaign's game system.
+  systemPrompt?: string
 }
 
-export default function AddFeatDialog({ open, onOpenChange, onAdd, getChatMessages }: AddFeatDialogProps) {
+export default function AddFeatDialog({
+  open,
+  onOpenChange,
+  onAdd,
+  apiUrl = "https://api.openai.com/v1/chat/completions",
+  apiKey = "",
+  model = "gpt-4o-mini",
+  getChatMessages,
+  systemPrompt = "",
+}: AddFeatDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [useChat, setUseChat] = useState(false)
-  const [selectedMessage, setSelectedMessage] = useState<string | null>(null)
-  // Resolved at render time from the stable accessor (see props) so the rest of
-  // the component is unchanged.
-  const chatMessages = getChatMessages()
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   const handleAdd = () => {
     if (!name.trim()) return
@@ -40,39 +58,96 @@ export default function AddFeatDialog({ open, onOpenChange, onAdd, getChatMessag
     // Reset form
     setName("")
     setDescription("")
-    setUseChat(false)
-    setSelectedMessage(null)
     onOpenChange(false)
   }
 
-  const handleSelectMessage = (content: string) => {
-    setSelectedMessage(content)
+  const generateFeatDetails = async () => {
+    // Name (and an API URL) are required — but an API key is NOT. Keyless
+    // providers (e.g. local Ollama) are fully supported (see fetch below).
+    if (!name.trim()) {
+      setGenerationError("Please enter a feat name first")
+      return
+    }
+    if (!apiUrl) {
+      setGenerationError("The API URL is empty — set one in the Chat Settings (⚙️).")
+      return
+    }
 
-    // Try to extract feat details from the message
+    setIsGenerating(true)
+    setGenerationError(null)
+
     try {
-      // Look for feat name patterns
-      const nameMatch =
-        content.match(/feat:?\s*([^,.\n]+)/i) ||
-        content.match(/name:?\s*([^,.\n]+)/i) ||
-        content.match(/ability:?\s*([^,.\n]+)/i)
+      // Feats are not loot entries, so no captured-entry stage — the generator
+      // falls to the bounded recent-chat slice (what the DM actually said), then
+      // plain canonical. Same fetch/timeout/auth pattern as the item dialog.
+      const featName = name.trim()
+      const context = buildGenerationContext(featName, [], getChatMessages())
+      const { system, user } = buildGeneratorMessages({
+        name: featName,
+        type: "feat",
+        context,
+        campaignPrompt: resolveSystemPrompt(systemPrompt),
+      })
 
-      if (nameMatch && nameMatch[1]) {
-        setName(nameMatch[1].trim())
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        // No timeout = a hung endpoint spins the loader forever (Phase B audit gap).
+        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+        headers: {
+          "Content-Type": "application/json",
+          // Only send auth when a key actually exists. Keyless providers (e.g. local
+          // Ollama) must not receive a blank `Bearer` token, and their absence is
+          // perfectly fine — so the key is optional, not a requirement.
+          ...(apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: "system", content: system }, { role: "user", content: user }],
+          temperature: 0.7,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            `The server rejected the request (HTTP ${response.status}) — it likely requires an API key. Set one in the Chat Settings (⚙️), or point the API URL at a keyless endpoint (e.g. a local Ollama).`,
+          )
+        }
+        throw new Error(`API error: ${response.status}`)
       }
 
-      // Look for description patterns
-      const descMatch = content.match(/description:?\s*([^.]+\.)/i) || content.match(/desc:?\s*([^.]+\.)/i)
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content
 
-      if (descMatch && descMatch[1]) {
-        setDescription(descMatch[1].trim())
-      } else {
-        // If no specific description pattern, try to use the whole message as context
-        setDescription(content.substring(0, 150) + (content.length > 150 ? "..." : ""))
+      // Tolerate fences, prose, wrappers, and arrays (lib/item-generator.ts)
+      const fields = extractItemFields(content)
+      if (!fields) {
+        setGenerationError("The AI didn't return usable feat details — try again, or a different model.")
+        return
       }
+
+      if (fields.name) setName(fields.name)
+      if (fields.description) setDescription(fields.description)
     } catch (error) {
-      console.error("Error parsing message:", error)
-      // If parsing fails, just use the message as description
-      setDescription(content.substring(0, 150) + (content.length > 150 ? "..." : ""))
+      console.error("Error generating feat:", error)
+      // A timed-out request (AbortSignal.timeout) aborts as TimeoutError/AbortError —
+      // say what happened and that the clock covers slow/local models, instead of
+      // falling through to the opaque generic message.
+      if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        setGenerationError(
+          `The AI didn't respond within ${GENERATION_TIMEOUT_MS / 1000} s — try again, or check the endpoint.`,
+        )
+        return
+      }
+      // Surface the specific reason (e.g. 401/403 "key required") when we have one,
+      // and fall back to a generic message only when the error is opaque.
+      setGenerationError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to generate feat details. Check your API settings.",
+      )
+    } finally {
+      setIsGenerating(false)
     }
   }
 
@@ -84,72 +159,42 @@ export default function AddFeatDialog({ open, onOpenChange, onAdd, getChatMessag
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="flex items-center space-x-2">
-            <Switch id="use-chat" checked={useChat} onCheckedChange={setUseChat} />
-            <Label htmlFor="use-chat">Pull from chat</Label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="name">Name</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isGenerating || !name.trim()}
+                title="Generate name and description from a short feat name"
+                onClick={generateFeatDetails}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2Icon className="h-4 w-4 mr-1 animate-spin" /> Generating...
+                  </>
+                ) : (
+                  <>
+                    <WandIcon className="h-4 w-4 mr-1" /> Generate Details
+                  </>
+                )}
+              </Button>
+            </div>
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Feat name" />
+            {generationError && <p className="text-xs text-destructive">{generationError}</p>}
           </div>
 
-          {useChat ? (
-            <div className="space-y-4">
-              <div className="max-h-[300px] overflow-y-auto border rounded-md p-2">
-                {chatMessages.filter((msg) => msg.role === "assistant").length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">No assistant messages available</div>
-                ) : (
-                  chatMessages
-                    .filter((msg) => msg.role === "assistant")
-                    .map((message) => (
-                      <div
-                        key={message.id}
-                        className={`p-2 my-2 rounded-md cursor-pointer hover:bg-muted ${
-                          selectedMessage === message.content ? "bg-muted border-2 border-primary" : ""
-                        }`}
-                        onClick={() => handleSelectMessage(message.content)}
-                      >
-                        {message.content.length > 100 ? `${message.content.substring(0, 100)}...` : message.content}
-                      </div>
-                    ))
-                )}
-              </div>
-
-              {selectedMessage && (
-                <div className="space-y-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Feat name" />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Feat description"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Feat name" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Feat description"
-                  rows={3}
-                />
-              </div>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Feat description"
+              rows={3}
+            />
+          </div>
 
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>

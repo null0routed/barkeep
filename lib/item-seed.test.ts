@@ -267,6 +267,30 @@ test("plain message (no context): canonical wording, full rarity list, quantity 
   assert.ok(!/,"quantity"/.test(equipment))
 })
 
+test("trait/feat messages (TODO.MD #20): source for traits, no rarity or quantity for either", () => {
+  const trait = buildGeneratorUserMessage("Fox Cunning", "trait", null)
+  assert.ok(trait.includes("character trait"))
+  assert.ok(trait.includes('"source"'))
+  assert.ok(!/,"rarity"/.test(trait))
+  assert.ok(!/,"quantity"/.test(trait))
+  for (const rung of GENERATABLE_RARITIES) assert.ok(!trait.includes(rung))
+
+  const feat = buildGeneratorUserMessage("Lucky", "feat", null)
+  assert.ok(feat.includes("character feat"))
+  assert.ok(!/,"source"/.test(feat))
+  assert.ok(!/,"rarity"/.test(feat))
+  assert.ok(!/,"quantity"/.test(feat))
+
+  // chat-seeded trait: same contract, transcript included
+  const messages = [msg("assistant", "The DM says she gained Fox Cunning from her half-elf heritage.")]
+  const context = buildGenerationContext("Fox Cunning", [], messages)
+  assert.ok(context && context.kind === "chat")
+  const fromChat = buildGeneratorUserMessage("Fox Cunning", "trait", context)
+  assert.ok(fromChat.includes("[DM] The DM says she gained Fox Cunning"))
+  assert.ok(fromChat.includes('"source"'))
+  assert.ok(!/,"rarity"/.test(fromChat))
+})
+
 test("drift guard: NO app-authored generator wording names a specific ruleset (owner revision 2026-10-30)", () => {
   const ring = entry("A ring of pale, almost translucent bone")
   const candidates = buildGenerationContext("ring of bone", [ring], [])

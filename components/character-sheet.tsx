@@ -40,7 +40,7 @@ interface CharacterSheetProps {
   setCharacter: React.Dispatch<React.SetStateAction<CharacterData>>
   // T3.2: stable read-through accessor (see app/page.tsx) instead of a live array —
   // a per-delta chatMessages array would defeat this component's memo during streaming.
-  // Call it when the "Pull from chat" dialogs need the current history.
+  // Call it when the Generate Details dialogs (item/trait/feat) need the current history.
   getChatMessages: () => ChatMessage[]
   apiUrl?: string
   apiKey?: string
@@ -298,10 +298,23 @@ function CharacterSheet({
         open={isAddTraitOpen}
         onOpenChange={setIsAddTraitOpen}
         onAdd={addTrait}
+        apiUrl={apiUrl}
+        apiKey={apiKey}
+        model={model}
         getChatMessages={getChatMessages}
+        systemPrompt={systemPrompt}
       />
 
-      <AddFeatDialog open={isAddFeatOpen} onOpenChange={setIsAddFeatOpen} onAdd={addFeat} getChatMessages={getChatMessages} />
+      <AddFeatDialog
+        open={isAddFeatOpen}
+        onOpenChange={setIsAddFeatOpen}
+        onAdd={addFeat}
+        apiUrl={apiUrl}
+        apiKey={apiKey}
+        model={model}
+        getChatMessages={getChatMessages}
+        systemPrompt={systemPrompt}
+      />
 
       <AddSpellDialog
         open={isAddSpellOpen}

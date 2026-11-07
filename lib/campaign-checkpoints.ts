@@ -306,3 +306,38 @@ export function runCheckpointTool(
 
   return { content: formatCheckpoints(current, limit), checkpoints: current }
 }
+
+/**
+ * True only when EVERY tool call in a leg is a checkpoint save — no sheet lookups, no
+ * checkpoint fetches, no image generation, no unknown tools.
+ *
+ * The caller uses this to skip the follow-up request entirely: a save is pure
+ * bookkeeping (its side effect landed in runCheckpointTool before this is ever asked), and
+ * the model's continuation after one is exactly the re-narration + second "What do you do?"
+ * that a follow-up leg would otherwise produce. A leg where the save is only ONE of several
+ * calls still needs its follow-up (the other tools' results are what the model must use),
+ * so mixed legs return false.
+ */
+export function isCheckpointSaveOnly(toolCalls: ReadonlyArray<unknown>): boolean {
+  if (toolCalls.length === 0) return false
+  return toolCalls.every((call) => {
+    if (typeof call !== "object" || call === null) return false
+    const fn = (call as Record<string, unknown>).function
+    if (typeof fn !== "object" || fn === null) return false
+    return (fn as Record<string, unknown>).name === SAVE_CHECKPOINT_TOOL_NAME
+  })
+}
+
+/**
+ * The checkpoints a leg of the turn added: everything in `after` whose id was not in
+ * `before`, in save order. (The store only ever appends — pruning drops the OLDEST — so
+ * a diff by id is both sufficient and robust to any reordering.) Used to attach the
+ * "checkpoint saved in the background" references to the completed turn.
+ */
+export function extractNewCheckpoints(
+  before: CampaignCheckpoint[],
+  after: CampaignCheckpoint[],
+): CampaignCheckpoint[] {
+  const beforeIds = new Set(before.map((c) => c.id))
+  return after.filter((c) => !beforeIds.has(c.id))
+}

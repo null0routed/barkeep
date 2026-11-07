@@ -13,6 +13,8 @@
 //   sheet-traits    ditto, Traits tab (trait markdown)
 //   sheet-spells    ditto, Spells tab (spell markdown)
 //   sheet-expanded  ditto, Combat Stats + Spell Slots cards expanded (Speed + Spellcasting)
+//   dialog-trait    Add Trait dialog open with a name typed (Generate Details visible)
+//   checkpoint-badge  a turn that saved a checkpoint — shield badge clicked, popover open
 //
 // The sheet-* scenarios seed a `dnd-character` localStorage save with markdown
 // descriptions (bold/italic/newlines) so the TODO.MD #13 tab rendering is visible.
@@ -36,6 +38,8 @@ const known = [
   "sheet-traits",
   "sheet-spells",
   "sheet-expanded",
+  "dialog-trait",
+  "checkpoint-badge",
 ]
 if (!known.includes(scenario)) {
   console.error(`Unknown scenario "${scenario}". Try: ${known.join(" | ")}`)
@@ -186,6 +190,29 @@ try {
   if (sheetScenarios.includes(scenario)) {
     await context.addInitScript((seed) => localStorage.setItem("dnd-character", JSON.stringify(seed)), seedCharacter)
   }
+  // checkpoint-badge: a saved checkpoint in the store + a chat turn that references it
+  if (scenario === "checkpoint-badge") {
+    await context.addInitScript(() => {
+      const checkpoint = {
+        id: "cp-1",
+        createdAt: "2026-11-07T12:00:00.000Z",
+        title: "Lighthouse Approach",
+        summary: "The party reached the lighthouse at low tide. The Tollkeeper's key has seven teeth; the door is open.",
+      }
+      localStorage.setItem("dnd-campaign-checkpoints", JSON.stringify([checkpoint]))
+      localStorage.setItem("dnd-chat", JSON.stringify([
+        { id: "m1", role: "user", content: "Save a checkpoint and wrap up the scene." },
+        {
+          id: "m2",
+          role: "assistant",
+          content:
+            "The bell has stopped. The lantern is swinging on the gallery rail. The figure on the rocks is not turning.\n\nThe tide is coming in. What do you do?",
+          checkpointsSaved: [{ id: "cp-1", title: "Lighthouse Approach", createdAt: "2026-11-07T12:00:00.000Z" }],
+          stats: { promptTokens: 4210, completionTokens: 318, totalTokens: 4528, contextMessages: 12, elapsedMs: 9240, tokensPerSecond: 34.4 },
+        },
+      ]))
+    })
+  }
 
   const page = await context.newPage()
   await page.goto(BASE + "/", { waitUntil: "networkidle" })
@@ -210,6 +237,16 @@ try {
     await page.getByRole("button", { name: "Expand spell slots" }).click()
     await page.getByLabel("Speed (ft)").waitFor()
     await page.getByLabel("Spell Save DC:").waitFor()
+  }
+  if (scenario === "dialog-trait") {
+    await page.getByRole("tab", { name: "Traits" }).click()
+    await page.getByRole("button", { name: "Add Trait" }).click()
+    await page.getByRole("dialog").getByLabel("Name").fill("Fox Cunning")
+    await page.getByRole("button", { name: "Generate Details" }).waitFor()
+  }
+  if (scenario === "checkpoint-badge") {
+    await page.getByRole("button", { name: "View saved checkpoint" }).click()
+    await page.getByRole("group", { name: "Saved checkpoints" }).getByText("Checkpoint saved").waitFor()
   }
 
   await page.screenshot({ path: out, fullPage: sheetScenarios.includes(scenario) })

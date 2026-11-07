@@ -33,25 +33,27 @@
 
 12. ~~CI/CD pipeline: deployment to the webserver (CI already runs the gates — this adds the deploy step; target server + method + triggers TBD).~~ — Design A (hosted-runner + Cloudflare Access SSH + 3 forced-command keys) done in 106adf4…d36401e; Deploy + Rollback both proven end-to-end (see FIXES.MD § 2026-11-03 close-out)
 
-13. Markdown in all of the tab text boxes (inventory, equipment, spells, etc) including newline rendering.
+13. ~~Markdown in all of the tab text boxes (inventory, equipment, spells, etc) including newline rendering.~~ — done in eaba466
 
-14. Stat blocks:
- - Speed
- - Spell Attack
- - Spell Save
+14. ~~Stat blocks:~~ — done in eaba466
+ - ~~Speed~~
+ - ~~Spell Attack~~
+ - ~~Spell Save~~
 
-15. Search function should also search the "rarity" bubbles.
+15. ~~Search function should also search the "rarity" bubbles.~~ — done in eaba466 (search also extended to spell schools)
 
 16. A dice rolling mechanism.
 
 17. Drag and reorder panels in inventory, equipment, proficiencies, traits and feats. Drag and redorder panels in spells *within their class*.
 
-18. Do I need a slider to adjust font size?
+18. ~~Do I need a slider to adjust font size?~~ — Will not implement (no real use case; everything is rem-based, so the lever can still be added cheaply later if a need surfaces)
 
-19. Insert icons in front of "Export" on main page and then the menu options in the menu.
+19. ~~Insert icons in front of "Export" on main page and then the menu options in the menu.~~ — done in eaba466
 
 20. "Feat" and "Trait" have a "Pull from chat" toggle - how do we clean this up?
 
 21. A tactical map - just an plane with grids/grid coordinates showing dots for where everyone is so that player and DM can get a sense of positioning and use ranged tools better. DM can add obstacles and walls possibly?
 
 22. (maybe) Inline code in chat renders as a full-width block. react-markdown v9+ removed the `inline` prop on the `code` component, so the inline-vs-block check in `components/markdown-body.tsx` never fires and inline `code` spans fall through to the block `<pre>` styling. If we ever want true inline `code` in bubbles, detect inline-ness some other way (e.g. checking the parent `pre` node). Confirmed quirk as of the #13 refactor; low urgency unless it actually bothers us. 
+
+23. I need to add something to the system prompt that specifies how the AI will call itself "Barkeep", adopt that persona, etc.

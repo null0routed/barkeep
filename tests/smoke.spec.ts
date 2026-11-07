@@ -99,3 +99,63 @@ test('item descriptions render markdown in the tabs (TODO.MD #13)', async ({ pag
   await expect(page.locator('strong').filter({ hasText: 'Bladesong' })).toBeVisible()
   await expect(page.locator('em').filter({ hasText: 'whispers' })).toBeVisible()
 })
+
+test('Add Trait/Feat dialogs offer Generate Details — Pull from chat removed (TODO.MD #20)', async ({ page }) => {
+  await page.goto('/')
+
+  // Trait dialog: Generate Details (disabled until a name), Source field, no toggle
+  await page.getByRole('tab', { name: 'Traits' }).click()
+  await page.getByRole('button', { name: 'Add Trait' }).click()
+  let dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Generate Details' })).toBeDisabled()
+  await dialog.getByLabel('Name').fill('Fox Cunning')
+  await expect(dialog.getByRole('button', { name: 'Generate Details' })).toBeEnabled()
+  await expect(dialog.getByLabel('Source')).toBeVisible()
+  await expect(dialog.getByText('Pull from chat')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  // Feat dialog: Generate Details, no toggle
+  await page.getByRole('tab', { name: 'Feats' }).click()
+  await page.getByRole('button', { name: 'Add Feat' }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Generate Details' })).toBeDisabled()
+  await expect(dialog.getByText('Pull from chat')).toHaveCount(0)
+})
+
+test('turn that saved a checkpoint in the background shows a shield badge + popover', async ({ page }) => {
+  await page.addInitScript(() => {
+    const checkpoint = {
+      id: 'cp-1',
+      createdAt: '2026-11-07T12:00:00.000Z',
+      title: 'Lighthouse Approach',
+      summary: 'The party reached the lighthouse at low tide.',
+    }
+    localStorage.setItem('dnd-campaign-checkpoints', JSON.stringify([checkpoint]))
+    localStorage.setItem('dnd-chat', JSON.stringify([
+      { id: 'm1', role: 'user', content: 'Save a checkpoint and wrap up the scene.' },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'The tide is coming in. What do you do?',
+        checkpointsSaved: [{ id: 'cp-1', title: 'Lighthouse Approach', createdAt: '2026-11-07T12:00:00.000Z' }],
+      },
+    ]))
+  })
+  await page.goto('/')
+
+  // The turn that saved gets the shield badge in its action bar
+  const badge = page.getByRole('button', { name: 'View saved checkpoint' })
+  await expect(badge).toBeVisible()
+
+  // Clicking it opens the popover: what was saved, when, and its summary (resolved
+  // from the live checkpoint store by id)
+  await badge.click()
+  const popover = page.getByRole('group', { name: 'Saved checkpoints' })
+  await expect(popover.getByText('Checkpoint saved')).toBeVisible()
+  await expect(popover.getByText('Lighthouse Approach')).toBeVisible()
+  await expect(popover.getByText('The party reached the lighthouse at low tide.')).toBeVisible()
+
+  // Outside click dismisses
+  await page.keyboard.press('Escape')
+  await expect(popover).toHaveCount(0)
+})

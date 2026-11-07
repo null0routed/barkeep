@@ -188,6 +188,27 @@ export interface ChatMessage {
    * just render without an image, same as missing `thinking`/`stats`).
    */
   image?: { id: string; alt: string }
+  /**
+   * Checkpoints the DM saved in the background during this assistant turn (the
+   * `saveCampaignCheckpoint` tool ran after the narration; see
+   * lib/campaign-checkpoints.ts). Small stable references only — the full records
+   * stay in the checkpoint store, and the badge popover resolves details by id.
+   * Absent on every non-checkpoint turn and on old saves (graceful degradation).
+   */
+  checkpointsSaved?: SavedCheckpointRef[]
+}
+
+/**
+ * Small persisted reference to a checkpoint saved during a chat turn (see
+ * ChatMessage.checkpointsSaved). Deliberately just id + title + time: the checkpoint
+ * store (lib/campaign-checkpoints.ts) remains the single source of truth for the
+ * full record, and a pruned checkpoint still leaves the badge self-describing.
+ */
+export interface SavedCheckpointRef {
+  id: string
+  title: string
+  /** ISO 8601 timestamp of when the checkpoint was saved */
+  createdAt: string
 }
 
 export interface CampaignNotes {

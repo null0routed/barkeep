@@ -19,6 +19,8 @@ export interface GeneratedItemFields {
   rarity?: string
   /** Positive whole-number quantity (inventory items only). */
   quantity?: number
+  /** Source as the model returns it (trait generation — "Race", "Background", …). Displayed verbatim. */
+  source?: string
 }
 
 /**
@@ -98,10 +100,16 @@ export function extractItemFields(content: unknown): GeneratedItemFields | null 
     fields.rarity = record.rarity.trim().toLowerCase()
   }
 
+  // Trait source — models may emit either key; the dialog shows it verbatim.
+  const rawSource = record.source ?? record.from
+  if (typeof rawSource === "string" && rawSource.trim()) {
+    fields.source = rawSource.trim()
+  }
+
   const rawQuantity = record.quantity
   const quantity =
     typeof rawQuantity === "number" ? rawQuantity : typeof rawQuantity === "string" && rawQuantity.trim() ? Number(rawQuantity) : NaN
   if (Number.isInteger(quantity) && quantity > 0) fields.quantity = quantity
 
-  return fields.name || fields.description || fields.rarity || fields.quantity ? fields : null
+  return fields.name || fields.description || fields.rarity || fields.quantity || fields.source ? fields : null
 }

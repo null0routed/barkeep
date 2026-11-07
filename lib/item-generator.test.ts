@@ -72,3 +72,11 @@ test("extractItemFields: unknown fields are ignored, known fields survive", () =
   assert.ok(out)
   assert.deepEqual(out, { name: "Lantern", description: "Glows.", rarity: "common" })
 })
+
+test("extractItemFields: trait source is captured (source or from key)", () => {
+  assert.equal(extractItemFields('{"name":"Fox Cunning","description":"d","source":"Half-elf, heritage"}')?.source, "Half-elf, heritage")
+  assert.equal(extractItemFields('{"name":"Fox Cunning","description":"d","from":"Dragonmark"}')?.source, "Dragonmark")
+  assert.equal(extractItemFields('{"name":"Fox Cunning","description":"d","source":"  "}')?.source, undefined)
+  // a source-only object is still "usable"
+  assert.deepEqual(extractItemFields('{"name":"","description":"","source":"Race"}'), { source: "Race" })
+})

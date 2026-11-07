@@ -70,8 +70,15 @@ test("mergeUsage tolerates undefined legs and missing sub-fields", () => {
   )
 })
 
-test("combineLegContents keeps BOTH legs of a tool round-trip, in order", () => {
-  assert.equal(combineLegContents("The door creaks open…", " You step inside."), "The door creaks open… You step inside.")
+test("combineLegContents keeps BOTH legs of a tool round-trip, in order, joined by a blank line", () => {
+  assert.equal(
+    combineLegContents("The door creaks open…", " You step inside."),
+    "The door creaks open…\n\n You step inside.",
+  )
+  // the no-space fusion that read as one mashed sentence ("…do?The DM makes…")
+  const joined = combineLegContents("What do you do?", "The DM makes a brief note.")
+  assert.equal(joined, "What do you do?\n\nThe DM makes a brief note.")
+  assert.ok(!joined.includes("do?The"))
 })
 
 test("combineLegContents keeps the narration when the follow-up leg is empty", () => {

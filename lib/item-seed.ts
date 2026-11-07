@@ -214,9 +214,21 @@ export function buildGeneratorSystemMessage(campaignPrompt: string): string {
 
 /** The shared JSON contract, with optional pinned values (already-validated by the caller). */
 function jsonContract(
-  type: "inventory" | "equipment",
+  type: "inventory" | "equipment" | "trait" | "feat",
   pinned: { name?: string; rarity?: string; quantity?: number } = {},
 ): string {
+  if (type === "trait") {
+    const nameLine = pinned.name ? JSON.stringify(pinned.name) : '"The trait\'s name"'
+    return (
+      `\n{\n  "name": ${nameLine},\n  "description": "One to three sentences: what the trait is, what it lets the character do, and any limits",\n  "source": "Where it comes from in this campaign — class, race, background, feat, or in-world source"\n}`
+    )
+  }
+  if (type === "feat") {
+    const nameLine = pinned.name ? JSON.stringify(pinned.name) : '"The feat\'s name"'
+    return (
+      `\n{\n  "name": ${nameLine},\n  "description": "One to three sentences: what the feat is, what it lets the character do, and any limits"\n}`
+    )
+  }
   const nameLine = pinned.name ? JSON.stringify(pinned.name) : '"The item\'s name"'
   const rarityLine = pinned.rarity ? JSON.stringify(pinned.rarity) : JSON.stringify("One of: " + GENERATABLE_RARITIES.join(", "))
   const quantityLine =
@@ -233,10 +245,11 @@ function jsonContract(
 /** The user message for each seeding stage (canonical / candidates / chat / plain). */
 export function buildGeneratorUserMessage(
   name: string,
-  type: "inventory" | "equipment",
+  type: "inventory" | "equipment" | "trait" | "feat",
   context: GenerationContext | null,
 ): string {
   const title = name.trim()
+  const kind = type === "trait" ? "character trait" : type === "feat" ? "character feat" : "item"
 
   if (context?.kind === "canonical") {
     const entry = context.entry
@@ -244,7 +257,7 @@ export function buildGeneratorUserMessage(
     const notesLine = entry.notes ? `\nNotes: ${entry.notes}` : ""
     const rarity = GENERATABLE_RARITIES.includes(entry.rarity) ? entry.rarity : undefined
     return (
-      `Provide the details for the item "${title}" exactly as this campaign presented it. This is the captured in-world entry — it is CANONICAL campaign lore and your details must not contradict it:` +
+      `Provide the details for the ${kind} "${title}" exactly as this campaign presented it. This is the captured in-world entry — it is CANONICAL campaign lore and your details must not contradict it:` +
       `\n\nName: ${entry.name}` +
       `\nDescription: ${entry.description}` +
       `\nRarity: ${entry.rarity}${quantityLine}${notesLine}` +
@@ -267,7 +280,7 @@ export function buildGeneratorUserMessage(
       })
       .join("\n")
     return (
-      `Provide the details for the item "${title}" in the campaign's game system.` +
+      `Provide the details for the ${kind} "${title}" in the campaign's game system.` +
       `\n\nCaptured entries from this campaign that MAY be this same item under a shorter or fuller name (but may also be DIFFERENT items):` +
       `\n\n${list}` +
       `\n\nIf "${title}" clearly refers to one of these entries — the same item, described differently — base the details on that entry, keep its facts, and use THAT entry's name in the JSON. If it clearly refers to a different item, ignore the entries and provide canonical details for "${title}".` +
@@ -279,7 +292,7 @@ export function buildGeneratorUserMessage(
   if (context?.kind === "chat") {
     const transcript = context.turns.map((turn) => `[${turn.role === "assistant" ? "DM" : "You"}] ${turn.text}`).join("\n\n")
     return (
-      `Provide the details for the item "${title}" in the campaign's game system.` +
+      `Provide the details for the ${kind} "${title}" in the campaign's game system.` +
       `\n\nRecent chat from this campaign:\n\n${transcript}` +
       `\n\nIf this chat mentions "${title}", or clearly the same item under a different name or description, base the details on what the chat says and use the in-world name the chat gives it. Otherwise provide canonical details for "${title}".` +
       `\n\nRespond with a single JSON object only (no prose) with exactly these fields:` +
@@ -288,7 +301,7 @@ export function buildGeneratorUserMessage(
   }
 
   return (
-    `Provide canonical details for the item "${title}" in the campaign's game system.` +
+    `Provide canonical details for the ${kind} "${title}" in the campaign's game system.` +
     `\n\nRespond with a single JSON object only (no prose) with exactly these fields:` +
     jsonContract(type)
   )
@@ -297,7 +310,7 @@ export function buildGeneratorUserMessage(
 /** The complete generator request (system + user), ready for the messages array. */
 export function buildGeneratorMessages(params: {
   name: string
-  type: "inventory" | "equipment"
+  type: "inventory" | "equipment" | "trait" | "feat"
   context: GenerationContext | null
   campaignPrompt: string
 }): { system: string; user: string } {

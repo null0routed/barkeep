@@ -1,4 +1,4 @@
-import type { TurnStats } from "./types"
+import type { TurnStats, SavedCheckpointRef } from "./types"
 
 /**
  * One completed assistant turn, normalized from whatever the endpoint returned
@@ -20,6 +20,12 @@ export interface AssistantTurn {
    * renderer fetches `<img src>` from IndexedDB by `id` after a reload.
    */
   image?: { id: string; alt: string; src?: string }
+  /**
+   * Checkpoints saved in the background during this turn (the DM's checkpoint tool ran
+   * after the narration). Small references; the full records live in the checkpoint
+   * store. Absent when the turn saved none.
+   */
+  checkpointsSaved?: SavedCheckpointRef[]
 }
 
 /** The OpenAI-compatible `usage` block, as reported by endpoints. */
@@ -142,13 +148,16 @@ export function toAssistantTurn(
 }
 
 /**
- * Combine the visible content of the two legs of a tool round-trip into the turn's
- * content. NEITHER leg may be dropped: leg one is the model's narration up to the tool
- * call, leg two its continuation after the result — the turn the player reads is both.
- * (A checkpoint-style leg-two that is empty means the narration is leg one's, full stop.)
+ * Join the visible content of the two legs of a tool round-trip into the turn's content.
+ * NEITHER leg may be dropped: leg one is the model's narration up to the tool call, leg two
+ * its continuation after the result — the turn the player reads is both. When both legs have
+ * text they are joined with a blank line: raw concatenation welded the last word of leg one
+ * onto the first word of leg two ("…What do you do?The DM makes a brief note…").
  */
 export function combineLegContents(leg1: string, leg2: string): string {
-  return leg1 + leg2
+  if (leg1.length === 0) return leg2
+  if (leg2.length === 0) return leg1
+  return `${leg1}\n\n${leg2}`
 }
 
 /**

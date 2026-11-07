@@ -4,8 +4,10 @@ import { test } from "node:test"
 import {
   CHECKPOINTS_STORAGE_KEY,
   MAX_CHECKPOINTS_STORED,
+  extractNewCheckpoints,
   formatCheckpoint,
   formatCheckpoints,
+  isCheckpointSaveOnly,
   loadCheckpoints,
   runCheckpointTool,
   sanitizeCheckpoints,
@@ -301,4 +303,52 @@ test("runCheckpointTool(get): by id, unknown id, and limit clamping", () => {
 
   const defaulted = runCheckpointTool("getCampaignCheckpoints", {}, twelve)
   assert.ok(defaulted && defaulted.content.startsWith("Showing 3 of 12 saved checkpoints (newest first)."))
+})
+
+// ---------------------------------------------------------------------------
+// isCheckpointSaveOnly — the "skip the follow-up leg" decision
+// ---------------------------------------------------------------------------
+
+test("isCheckpointSaveOnly: true only when EVERY call is saveCampaignCheckpoint", () => {
+  const save = { id: "t1", type: "function" as const, function: { name: "saveCampaignCheckpoint", arguments: "{}" } }
+  const get = { id: "t2", type: "function" as const, function: { name: "getCampaignCheckpoints", arguments: "{}" } }
+  const sheet = { id: "t3", type: "function" as const, function: { name: "getCharacterSheet", arguments: "{}" } }
+
+  assert.equal(isCheckpointSaveOnly([save]), true)
+  assert.equal(isCheckpointSaveOnly([save, save]), true)
+
+  // any other tool in the leg means the follow-up is still needed (its results build the answer)
+  assert.equal(isCheckpointSaveOnly([save, get]), false)
+  assert.equal(isCheckpointSaveOnly([get, save]), false)
+  assert.equal(isCheckpointSaveOnly([save, sheet]), false)
+  assert.equal(isCheckpointSaveOnly([get]), false)
+  assert.equal(isCheckpointSaveOnly([]), false)
+
+  // malformed entries must not count as checkpoint saves
+  assert.equal(isCheckpointSaveOnly([undefined]), false)
+  assert.equal(isCheckpointSaveOnly([{ id: "t4" }]), false)
+  assert.equal(isCheckpointSaveOnly([{ id: "t5", function: { name: "saveCampaignCheckpoint" } }]), true)
+})
+
+// ---------------------------------------------------------------------------
+// extractNewCheckpoints — the "badge the turn with what it stored" diff
+// ---------------------------------------------------------------------------
+
+test("extractNewCheckpoints: returns only the appended entries, in save order", () => {
+  const before = makeMany(3)
+  const addedOne = makeCheckpoint(101)
+  const addedTwo = makeCheckpoint(102)
+  const after = [...before, addedOne, addedTwo]
+
+  assert.deepEqual(extractNewCheckpoints(before, after), [addedOne, addedTwo])
+  assert.deepEqual(extractNewCheckpoints(after, after), [])
+  assert.deepEqual(extractNewCheckpoints([], after), after)
+
+  // a same-id change (not an append) is NOT new
+  const swapped = [...before.slice(0, 2), { ...before[2]!, summary: "updated" }]
+  assert.deepEqual(extractNewCheckpoints(before, swapped), [])
+
+  // appending under the cap prunes the OLDEST — the diff still sees only the new one
+  const pruned = [...before.slice(1), addedOne]
+  assert.deepEqual(extractNewCheckpoints(before, pruned), [addedOne])
 })

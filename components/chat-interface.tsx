@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
+import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes, SavedCheckpointRef } from "@/lib/types"
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -17,6 +17,7 @@ import {
   PencilIcon,
   SendIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   SquareIcon,
   TrashIcon,
   RefreshCwIcon,
@@ -44,7 +45,7 @@ import {
 import MarkdownRenderer from "./markdown-renderer"
 import MessageImageRender from "./message-image-render"
 import { formatCharacterData } from "@/lib/format-character-data"
-import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint, saveCheckpoints, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
+import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint, saveCheckpoints, isCheckpointSaveOnly, extractNewCheckpoints, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
 import { buildSystemMessageBase } from "@/lib/system-prompt"
 import { collectLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
@@ -189,10 +190,13 @@ type ToolResultMessage = {
 }
 
 // The outcome of executing a batch of tool calls (TODO.MD #9): the per-call results to
-// feed the follow-up leg, plus the optional scene image to attach to the completed turn.
+// feed the follow-up leg, plus the optional scene image to attach to the completed turn,
+// plus the checkpoints the batch saved in the background (so the completed turn can be
+// badged with the ones it stored).
 type ToolCallOutcome = {
   results: ToolResultMessage[]
   image?: { id: string; alt: string; src?: string }
+  checkpointsSaved?: SavedCheckpointRef[]
 }
 
 // Memoized message component to prevent re-rendering all messages when typing
@@ -209,6 +213,7 @@ const ChatMessageComponent = memo(
     onSaveEdit,
     onCancelEdit,
     inFlight,
+    checkpoints,
   }: {
     message: ChatMessage
     onDelete: (id: string) => void
@@ -223,25 +228,30 @@ const ChatMessageComponent = memo(
     onCancelEdit?: () => void
     // True while any turn is running or a message is in inline edit
     inFlight?: boolean
+    // The live checkpoint store, so a saved-checkpoint badge can resolve its popover
+    // details (summary) by id. Identity only changes when a checkpoint is saved/pruned.
+    checkpoints?: CampaignCheckpoint[]
   }) => {
     const isUser = message.role === "user"
 
-    // T4.2: the turn-stats display is a tap-to-open POPOVER, not a tooltip —
-    // tooltips never fire on touch screens, and these numbers (tokens in/out,
-    // duration, speed) are a genuine glanceable datum, not decoration.
-    // Hand-rolled on the lightbox precedent (no new dependency): toggled by click,
-    // closed by outside-pointer or Escape.
-    const [statsOpen, setStatsOpen] = useState(false)
+    // T4.2: the action-bar popovers (turn stats; checkpoints saved in the background)
+    // are tap-to-open POPOVERS, not tooltips — tooltips never fire on touch screens, and
+    // these are a genuine glanceable datum, not decoration. Hand-rolled on the lightbox
+    // precedent (no new dependency): toggled by click, closed by outside-pointer or
+    // Escape. One shared state (which popover is open, if any) and one shared listener.
+    const [openPopover, setOpenPopover] = useState<"stats" | "checkpoint" | null>(null)
     const statsRef = useRef<HTMLDivElement>(null)
+    const checkpointRef = useRef<HTMLDivElement>(null)
     useEffect(() => {
-      if (!statsOpen) return
+      if (openPopover === null) return
+      const activeRef = openPopover === "stats" ? statsRef : checkpointRef
       const onPointerDown = (e: PointerEvent) => {
-        if (statsRef.current && !statsRef.current.contains(e.target as Node)) {
-          setStatsOpen(false)
+        if (activeRef.current && !activeRef.current.contains(e.target as Node)) {
+          setOpenPopover(null)
         }
       }
       const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape") setStatsOpen(false)
+        if (e.key === "Escape") setOpenPopover(null)
       }
       document.addEventListener("pointerdown", onPointerDown)
       document.addEventListener("keydown", onKeyDown)
@@ -249,7 +259,7 @@ const ChatMessageComponent = memo(
         document.removeEventListener("pointerdown", onPointerDown)
         document.removeEventListener("keydown", onKeyDown)
       }
-    }, [statsOpen])
+    }, [openPopover])
 
     return (
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -283,12 +293,12 @@ const ChatMessageComponent = memo(
                   title="Turn statistics"
                   aria-label="Turn statistics"
                   aria-haspopup="true"
-                  aria-expanded={statsOpen}
-                  onClick={() => setStatsOpen((open) => !open)}
+                  aria-expanded={openPopover === "stats"}
+                  onClick={() => setOpenPopover(openPopover === "stats" ? null : "stats")}
                 >
                   <InfoIcon className="h-3 w-3" />
                 </Button>
-                {statsOpen && (
+                {openPopover === "stats" && (
                   <div
                     className="absolute left-full top-1/2 z-40 ml-2 w-max max-w-[260px] -translate-y-1/2 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md"
                     role="group"
@@ -302,6 +312,59 @@ const ChatMessageComponent = memo(
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Checkpoint saved in the background (saveCampaignCheckpoint ran after the
+                narration, follow-up leg skipped). The badge carries only small references;
+                details resolve against the live checkpoint store by id when still stored,
+                and degrade to title + time when the store has pruned them. */}
+            {!isUser && message.checkpointsSaved && message.checkpointsSaved.length > 0 && (
+              <div className="relative" ref={checkpointRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-muted"
+                  title="Checkpoint saved"
+                  aria-label={
+                    message.checkpointsSaved.length === 1
+                      ? "View saved checkpoint"
+                      : `View ${message.checkpointsSaved.length} saved checkpoints`
+                  }
+                  aria-haspopup="true"
+                  aria-expanded={openPopover === "checkpoint"}
+                  onClick={() => setOpenPopover(openPopover === "checkpoint" ? null : "checkpoint")}
+                >
+                  <ShieldCheckIcon className="h-3 w-3" />
+                </Button>
+                {openPopover === "checkpoint" && (
+                  <div
+                    className="absolute left-full top-1/2 z-40 ml-2 w-max max-w-[280px] -translate-y-1/2 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                    role="group"
+                    aria-label="Saved checkpoints"
+                  >
+                    <div className="mb-1 font-medium">
+                      {message.checkpointsSaved.length === 1 ? "Checkpoint saved" : "Checkpoints saved"}
+                    </div>
+                    {message.checkpointsSaved.map((ref) => {
+                      const stored = checkpoints?.find((c) => c.id === ref.id)
+                      return (
+                        <div key={ref.id} className="mb-1.5 last:mb-0">
+                          <div className="font-medium">{ref.title}</div>
+                          <div className="opacity-60">
+                            saved {new Date(ref.createdAt).toLocaleString()}
+                          </div>
+                          {stored ? (
+                            <div className="mt-0.5">{stored.summary}</div>
+                          ) : (
+                            <div className="mt-0.5 opacity-60">
+                              (pruned from the checkpoint store — full record no longer kept)
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -427,6 +490,7 @@ const MessageList = memo(
     onSaveEdit,
     onCancelEdit,
     inFlight,
+    checkpoints,
   }: {
     messages: ChatMessage[]
     showThinking: boolean
@@ -441,6 +505,7 @@ const MessageList = memo(
     onSaveEdit: (id: string) => void
     onCancelEdit: () => void
     inFlight: boolean
+    checkpoints?: CampaignCheckpoint[]
   }) => {
     return (
       <div className="space-y-4">
@@ -470,6 +535,7 @@ const MessageList = memo(
                 onSaveEdit={isEditTarget ? onSaveEdit : undefined}
                 onCancelEdit={isEditTarget ? onCancelEdit : undefined}
                 inFlight={inFlight}
+                checkpoints={checkpoints}
               />
             )
           })
@@ -738,7 +804,8 @@ export default function ChatInterface({
     async (toolCalls: any[]): Promise<ToolCallOutcome> => {
       const results: ToolResultMessage[] = []
       let image: ToolCallOutcome["image"]
-      let workingCheckpoints = checkpointsRef.current
+      const startCheckpoints = checkpointsRef.current
+      let workingCheckpoints = startCheckpoints
 
       for (const toolCall of toolCalls) {
         const toolName: string = toolCall.function.name
@@ -862,7 +929,18 @@ export default function ChatInterface({
         setCampaignCheckpoints(workingCheckpoints)
       }
 
-      return { results, image }
+      // The checkpoints this batch saved in the background (none → an empty array; the
+      // caller attaches it to the turn only when non-empty, so plain turns serialize
+      // with no new field at all).
+      const checkpointsSaved = extractNewCheckpoints(startCheckpoints, workingCheckpoints).map(
+        (checkpoint) => ({ id: checkpoint.id, title: checkpoint.title, createdAt: checkpoint.createdAt }),
+      )
+
+      return {
+        results,
+        image,
+        checkpointsSaved: checkpointsSaved.length > 0 ? checkpointsSaved : undefined,
+      }
     },
     [character, setCampaignCheckpoints, imageApiUrl, apiKey, imageApiKey, imageModel, imageSize],
   )
@@ -1043,7 +1121,28 @@ export default function ChatInterface({
           // handleToolCalls is async (the generateImage tool performs a network call and an
           // IndexedDB write). It returns the per-call results for the follow-up leg plus the
           // optional scene image to attach to the completed turn.
-          const { results: toolResults, image } = await handleToolCalls(leg1.toolCalls)
+          const outcome = await handleToolCalls(leg1.toolCalls)
+          const { results: toolResults, image } = outcome
+
+          // Checkpoint-only leg with real narration already on the bubble: the turn is DONE.
+          // A save is pure bookkeeping — its localStorage side effect landed inside
+          // handleToolCalls above, and its tool result is just a confirmation the player
+          // never needs. Skipping the follow-up request is what stops the model from
+          // re-narrating the scene and re-asking "What do you do?" minutes after the turn
+          // already ended (owner-reported checkpoint bug). Mixed legs — save alongside a
+          // sheet lookup, checkpoint fetch, or image — still take the follow-up, because
+          // THAT leg is the answer the model must build from the other tools' results.
+          if (isCheckpointSaveOnly(leg1.toolCalls) && leg1.content.trim().length > 0) {
+            return {
+              content: leg1.content,
+              thinking: leg1.thinking,
+              stats: buildStats(leg1.usage, startedAt, conversation.length),
+              // The save happened in the background (no follow-up leg was made) — badge
+              // the turn with what it stored.
+              ...(outcome.checkpointsSaved ? { checkpointsSaved: outcome.checkpointsSaved } : {}),
+            }
+          }
+
           const firstMessage = {
             role: "assistant",
             content: leg1.content || null,
@@ -1067,6 +1166,8 @@ export default function ChatInterface({
             thinking: combineLegThinking(leg1.thinking, leg2.thinking),
             stats: buildStats(mergeUsage(leg1.usage, leg2.usage), startedAt, conversation.length),
             ...(image ? { image } : {}),
+            // A mixed leg (checkpoint save alongside another tool) still badges what it stored.
+            ...(outcome.checkpointsSaved ? { checkpointsSaved: outcome.checkpointsSaved } : {}),
           }
         }
 
@@ -1134,6 +1235,9 @@ export default function ChatInterface({
           // IndexedDB (lib/image-store.ts) and are fetched by the renderer on demand.
           // Undefined (a non-image turn) serializes to nothing, keeping the record tiny.
           image: turn.image ? { id: turn.image.id, alt: turn.image.alt } : undefined,
+          // Checkpoint badges persist their small references too (old saves simply lack
+          // the field), so the shield icon survives a reload of a conversation.
+          checkpointsSaved: turn.checkpointsSaved,
         }
         if (index === -1) {
           return [...prev, finalMessage]
@@ -1970,6 +2074,7 @@ export default function ChatInterface({
           onSaveEdit={saveEdit}
           onCancelEdit={cancelEdit}
           inFlight={inFlight}
+          checkpoints={campaignCheckpoints}
         />
       </CardContent>
       <CardFooter className="border-t p-3">
