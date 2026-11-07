@@ -32,6 +32,16 @@ export type SpellSlotKey =
   | "level8"
   | "level9"
 
+/**
+ * The character's spellcasting statistics (TODO.MD #14): the attack bonus for spell
+ * attacks and the saving-throw DC of their spells. A single set — the sheet tracks
+ * one class per character, like the rest of the spellcasting entries.
+ */
+export interface Spellcasting {
+  spellAttack: number
+  spellSaveDc: number
+}
+
 export interface CharacterData {
   name: string
   class: string
@@ -50,6 +60,8 @@ export interface CharacterData {
     armorClass: number
     currentHp: number
     maxHp: number
+    /** Movement speed in feet (5 ft grid standard: 30) */
+    speed: number
   }
   savingThrows: {
     strength: boolean
@@ -67,6 +79,7 @@ export interface CharacterData {
   feats: Feat[]
   spells: Spell[]
   spellSlots: SpellSlots
+  spellcasting: Spellcasting
 }
 
 export interface Skill {

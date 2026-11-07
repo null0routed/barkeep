@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo, memo } from "react"
+import { useMemo, memo, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import { splitThinkBlocks } from "@/lib/thinking"
 import { stripLootFences } from "@/lib/loot"
+import MarkdownBody from "./markdown-body"
 
 interface MarkdownRendererProps {
   content: string
@@ -42,93 +43,24 @@ const ThinkBlock = memo(({ content }: { content: string }) => {
 
 ThinkBlock.displayName = "ThinkBlock"
 
-// Memoized markdown components
-const MarkdownComponents = {
-  code: memo(({ node, inline, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || "")
-    return !inline ? (
-      <div className="relative">
-        <pre className="rounded-md bg-muted p-4 overflow-x-auto">
-          <code className={className} {...props}>
-            {children}
-          </code>
-        </pre>
-        {match && (
-          <div className="absolute top-2 right-2 text-xs text-muted-foreground px-2 py-1 rounded bg-background/80">
-            {match[1]}
-          </div>
-        )}
-      </div>
-    ) : (
-      <code className="bg-muted px-1 py-0.5 rounded text-sm" {...props}>
-        {children}
-      </code>
-    )
-  }),
-  table: memo(({ node, ...props }: any) => (
-    <div className="overflow-x-auto">
-      <table className="border-collapse border border-border w-full" {...props} />
-    </div>
-  )),
-  thead: memo(({ node, ...props }: any) => <thead className="bg-muted" {...props} />),
-  th: memo(({ node, ...props }: any) => <th className="border border-border p-2 text-left" {...props} />),
-  td: memo(({ node, ...props }: any) => <td className="border border-border p-2" {...props} />),
-  // App-chrome headings render in the Cinzel display face (globals.css base); DM chat
-  // headings stay in the body face — opt out of the global rule explicitly.
-  h1: memo(({ node, ...props }: any) => (
-    <h1 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-2xl font-bold mt-6 mb-4" {...props} />
-  )),
-  h2: memo(({ node, ...props }: any) => (
-    <h2 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-xl font-bold mt-5 mb-3" {...props} />
-  )),
-  h3: memo(({ node, ...props }: any) => (
-    <h3 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-lg font-bold mt-4 mb-2" {...props} />
-  )),
-  p: memo(({ node, ...props }: any) => <p className="mb-4" {...props} />),
-  ul: memo(({ node, ...props }: any) => <ul className="list-disc pl-6 mb-4" {...props} />),
-  ol: memo(({ node, ...props }: any) => <ol className="list-decimal pl-6 mb-4" {...props} />),
-  li: memo(({ node, ...props }: any) => <li className="mb-1" {...props} />),
-  blockquote: memo(({ node, ...props }: any) => (
-    <blockquote className="border-l-4 border-muted-foreground pl-4 italic my-4" {...props} />
-  )),
-}
-
-// React DevTools names for the memoized components (same pattern as chat-interface.tsx)
-MarkdownComponents.code.displayName = "MarkdownCode"
-MarkdownComponents.table.displayName = "MarkdownTable"
-MarkdownComponents.thead.displayName = "MarkdownThead"
-MarkdownComponents.th.displayName = "MarkdownTh"
-MarkdownComponents.td.displayName = "MarkdownTd"
-MarkdownComponents.h1.displayName = "MarkdownH1"
-MarkdownComponents.h2.displayName = "MarkdownH2"
-MarkdownComponents.h3.displayName = "MarkdownH3"
-MarkdownComponents.p.displayName = "MarkdownP"
-MarkdownComponents.ul.displayName = "MarkdownUl"
-MarkdownComponents.ol.displayName = "MarkdownOl"
-MarkdownComponents.li.displayName = "MarkdownLi"
-MarkdownComponents.blockquote.displayName = "MarkdownBlockquote"
-
 // Main component
 export default function MarkdownRenderer({ content, thinking }: MarkdownRendererProps) {
   // Memoize the processed content to avoid recalculating on every render.
   // barkeep-loot capture fences are stripped first (TODO #8 — the player never sees
-  // machine blocks), then thinking tags are pulled out as collapsed blocks.
+  // machine blocks), then thinking tags are pulled out as collapsed blocks. The
+  // markdown map + prose wrapper live in MarkdownBody (shared with the character
+  // tabs — TODO.MD #13).
   const processedContent = useMemo(() => splitThinkBlocks(stripLootFences(content)), [content])
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
+    <div>
       {/* Structured model thinking, when the endpoint provided it (TODO.MD #3.5) */}
       {thinking ? <ThinkBlock content={thinking} /> : null}
       {processedContent.map((block, index) =>
         block.type === "think" ? (
           <ThinkBlock key={index} content={block.content} />
         ) : (
-          <ReactMarkdown
-            key={index}
-            components={MarkdownComponents}
-          >
-            {block.content}
-          </ReactMarkdown>
+          <MarkdownBody key={index} content={block.content} />
         ),
       )}
     </div>

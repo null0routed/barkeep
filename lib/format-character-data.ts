@@ -66,6 +66,14 @@ export function formatCharacterData(character: CharacterData): string {
     }
   }
 
+  // Format spellcasting stats (TODO.MD #14) — only when the character has them set,
+  // same "omit when empty" rule as the other optional blocks.
+  const hasSpellcasting =
+    (character.spellcasting?.spellAttack ?? 0) > 0 || (character.spellcasting?.spellSaveDc ?? 0) > 0
+  const spellcasting = hasSpellcasting
+    ? `Spell Attack: ${formatModifier(character.spellcasting.spellAttack)} | Spell Save DC: ${character.spellcasting.spellSaveDc}`
+    : ""
+
   // Build the formatted character sheet
   return `
 CHARACTER SHEET: ${character.name || "Unnamed Character"}
@@ -75,7 +83,7 @@ ABILITY SCORES:
 ${abilities.join(" | ")}
 
 COMBAT STATS:
-HP: ${character.combatStats.currentHp}/${character.combatStats.maxHp} | AC: ${character.combatStats.armorClass}
+HP: ${character.combatStats.currentHp}/${character.combatStats.maxHp} | AC: ${character.combatStats.armorClass} | Speed: ${character.combatStats.speed} ft
 
 ${
   skills.length > 0
@@ -95,6 +103,13 @@ ${spells.join("\n")}
   spellSlots.length > 0
     ? `SPELL SLOTS:
 ${spellSlots.join(" | ")}
+
+`
+    : ""
+}${
+  spellcasting
+    ? `SPELLCASTING:
+${spellcasting}
 
 `
     : ""

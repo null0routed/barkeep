@@ -18,6 +18,7 @@ export const defaultCharacter: CharacterData = {
     armorClass: 10,
     currentHp: 0,
     maxHp: 0,
+    speed: 30,
   },
   savingThrows: {
     strength: false,
@@ -38,6 +39,10 @@ export const defaultCharacter: CharacterData = {
     level7: { total: 0, used: [], known: 0 },
     level8: { total: 0, used: [], known: 0 },
     level9: { total: 0, used: [], known: 0 },
+  },
+  spellcasting: {
+    spellAttack: 0,
+    spellSaveDc: 0,
   },
   inventory: [],
   equipment: [],

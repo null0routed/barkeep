@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontalIcon, AlertTriangleIcon, SunIcon, MoonIcon } from "lucide-react"
+import { MoreHorizontalIcon, AlertTriangleIcon, SunIcon, MoonIcon, FileDownIcon, FileUpIcon, SaveIcon, BookOpenIcon, InfoIcon } from "lucide-react"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES, MAX_PREVIOUS_MESSAGES } from "@/components/chat-interface"
@@ -13,6 +13,7 @@ import ExportDialog from "@/components/export-dialog"
 import { useTheme } from "next-themes"
 import type { CharacterData, ChatMessage, CampaignCheckpoint, CampaignNotes } from "@/lib/types"
 import { defaultCharacter } from "@/lib/default-character"
+import { sanitizeStoredCharacter } from "@/lib/character-sanitize"
 import { toast } from "sonner"
 import { migrateStoredSystemPrompt } from "@/lib/system-prompt"
 import { DEFAULT_IMAGE_RATE, DEFAULT_IMAGE_SIZE, clampImageRate } from "@/lib/image-gen"
@@ -240,7 +241,7 @@ export default function Home() {
 
     if (savedCharacter) {
       try {
-        setCharacter(JSON.parse(savedCharacter))
+        setCharacter(sanitizeStoredCharacter(JSON.parse(savedCharacter)))
       } catch (error) {
         console.error("Failed to parse saved character, using defaults:", error)
       }
@@ -579,7 +580,7 @@ export default function Home() {
               }
             }
 
-            if (data.character) setCharacter(data.character)
+            if (data.character) setCharacter(sanitizeStoredCharacter(data.character))
             if (importedChatArray) setChatMessages(chatToApply as ChatMessage[])
             if (data.apiUrl) setApiUrl(data.apiUrl)
             if (data.apiKey) setApiKey(data.apiKey)
@@ -730,45 +731,49 @@ export default function Home() {
                 <button
                   type="button"
                   role="menuitem"
-                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     saveToLocalStorage()
                   }}
                 >
+                  <SaveIcon className="h-4 w-4 shrink-0" aria-hidden />
                   Save now
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     loadFromFile()
                   }}
                 >
+                  <FileUpIcon className="h-4 w-4 shrink-0" aria-hidden />
                   Load from file…
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     setInstructionsOpen(true)
                   }}
                 >
+                  <BookOpenIcon className="h-4 w-4 shrink-0" aria-hidden />
                   Show instructions
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  className="w-full rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     setAboutOpen(true)
                   }}
                 >
+                  <InfoIcon className="h-4 w-4 shrink-0" aria-hidden />
                   About
                 </button>
                 <a
@@ -811,6 +816,7 @@ export default function Home() {
           </div>
           {/* Locked decision: Export stays outside the menu — the labeled data-safety CTA. */}
           <Button size="sm" onClick={handleExport}>
+            <FileDownIcon className="h-4 w-4" />
             Export
           </Button>
         </div>
@@ -829,6 +835,7 @@ export default function Home() {
             needed.
           </span>
           <Button variant="outline" size="sm" className="ml-auto" onClick={handleExport}>
+            <FileDownIcon className="h-4 w-4" />
             Export save
           </Button>
         </div>

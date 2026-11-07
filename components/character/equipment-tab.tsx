@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import MarkdownBody from "@/components/markdown-body"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -179,7 +180,9 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
                         </Badge>
                       </div>
                       {item.description && (
-                        <div className="text-sm text-muted-foreground">{item.description}</div>
+                        <div className="text-sm text-muted-foreground">
+                          <MarkdownBody content={item.description} compact />
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-col gap-1 sm:flex-row">

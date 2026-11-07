@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import MarkdownBody from "@/components/markdown-body"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -126,7 +127,9 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                         </Button>
                       </div>
                     </div>
-                    <div className="mt-2">{feat.description}</div>
+                    <div className="mt-2">
+                      <MarkdownBody content={feat.description} compact />
+                    </div>
                   </>
                 )}
               </div>

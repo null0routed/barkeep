@@ -17,6 +17,15 @@ interface SpellSlotsSectionProps {
 
 export default function SpellSlotsSection({ character, setCharacter }: SpellSlotsSectionProps) {
   const [spellSlotsOpen, setSpellSlotsOpen] = useState(false)
+  const handleSpellcastingChange = (field: "spellAttack" | "spellSaveDc", value: number) => {
+    setCharacter((prev) => ({
+      ...prev,
+      spellcasting: {
+        ...prev.spellcasting,
+        [field]: value,
+      },
+    }))
+  }
   const handleSpellSlotTotalChange = (level: number, total: number) => {
     const levelKey = `level${level}` as SpellSlotKey
 
@@ -107,6 +116,42 @@ export default function SpellSlotsSection({ character, setCharacter }: SpellSlot
       {spellSlotsOpen && (
         <CardContent>
           <div className="space-y-6">
+            {/* Spellcasting stats (TODO.MD #14): the attack bonus + save DC pair the
+                stat block expects, shown above the slots they govern. */}
+            <div className="border rounded-md p-3">
+              <div className="flex justify-between items-center gap-4">
+                <h3 className="font-medium">Spellcasting</h3>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="spell-attack" className="text-sm">
+                      Spell Attack:
+                    </Label>
+                    <Input
+                      id="spell-attack"
+                      type="number"
+                      value={character.spellcasting.spellAttack}
+                      onChange={(e) => handleSpellcastingChange("spellAttack", Number.parseInt(e.target.value) || 0)}
+                      className="w-16 h-8 text-center"
+                      min={0}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="spell-save-dc" className="text-sm">
+                      Spell Save DC:
+                    </Label>
+                    <Input
+                      id="spell-save-dc"
+                      type="number"
+                      value={character.spellcasting.spellSaveDc}
+                      onChange={(e) => handleSpellcastingChange("spellSaveDc", Number.parseInt(e.target.value) || 0)}
+                      className="w-16 h-8 text-center"
+                      min={0}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Cantrips */}
             <div className="border rounded-md p-3">
               <div className="flex justify-between items-center mb-2">

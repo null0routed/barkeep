@@ -4,9 +4,9 @@
  * The five unbounded tabs (Inventory, Equipment, Traits, Feats, Spells) can grow long
  * enough over a campaign that finding one entry by name becomes tedious. These are the
  * shared, testable predicates: case-insensitive substring matching, against `name` OR
- * `description` — so both "Mithral" (a name) and "silver cord" (a word in a
+ * `description` (and, when the item carries them, its `rarity` badge and school —
+ * TODO.MD #15) — so both "Mithral" (a name) and "silver cord" (a word in a
  * description) resolve, in a single predictable pass.
- *
  * All item shapes in lib/types.ts (InventoryItem, Equipment, Trait, Feat, Spell)
  * satisfy FilterableItem, so one generic covers every tab. Matching per-item also
  * means the tabs can render the ORIGINAL array (skipping non-matches) and keep the
@@ -17,6 +17,12 @@
 export interface FilterableItem {
   name: string
   description?: string
+  /** Present on InventoryItem/Equipment — the rarity tag — so "legendary" finds
+      Legendary gear by its badge, not only by name/description (TODO.MD #15). */
+  rarity?: string
+  /** Present on Spell — the school — so "evocation" finds Fireballs by category,
+      not only by name/description (TODO.MD #15). */
+  school?: string
 }
 
 /** True when `item` matches `query` — an empty/whitespace-only query matches everything. */
@@ -24,7 +30,9 @@ export function itemMatches(item: FilterableItem, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
   if (item.name.toLowerCase().includes(q)) return true
-  return (item.description ?? "").toLowerCase().includes(q)
+  if ((item.description ?? "").toLowerCase().includes(q)) return true
+  if ((item.rarity ?? "").toLowerCase().includes(q)) return true
+  return (item.school ?? "").toLowerCase().includes(q)
 }
 
 /**

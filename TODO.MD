@@ -50,4 +50,8 @@
 
 19. Insert icons in front of "Export" on main page and then the menu options in the menu.
 
-19. A tactical map - just an plane with grids/grid coordinates showing dots for where everyone is so that player and DM can get a sense of positioning and use ranged tools better. DM can add obstacles and walls possibly? 
+20. "Feat" and "Trait" have a "Pull from chat" toggle - how do we clean this up?
+
+21. A tactical map - just an plane with grids/grid coordinates showing dots for where everyone is so that player and DM can get a sense of positioning and use ranged tools better. DM can add obstacles and walls possibly?
+
+22. (maybe) Inline code in chat renders as a full-width block. react-markdown v9+ removed the `inline` prop on the `code` component, so the inline-vs-block check in `components/markdown-body.tsx` never fires and inline `code` spans fall through to the block `<pre>` styling. If we ever want true inline `code` in bubbles, detect inline-ness some other way (e.g. checking the parent `pre` node). Confirmed quirk as of the #13 refactor; low urgency unless it actually bothers us. 

@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import MarkdownBody from "@/components/markdown-body"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -170,7 +171,9 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                         </Badge>
                       </div>
                       {item.description && (
-                        <div className="text-sm text-muted-foreground">{item.description}</div>
+                        <div className="text-sm text-muted-foreground">
+                          <MarkdownBody content={item.description} compact />
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-col gap-1 sm:flex-row">

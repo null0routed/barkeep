@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import MarkdownBody from "@/components/markdown-body"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -141,7 +142,9 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                               <span className="font-medium">Materials:</span> {spell.materialComponents}
                             </div>
                           )}
-                          <div>{spell.description}</div>
+                          <div>
+                            <MarkdownBody content={spell.description} compact />
+                          </div>
                         </div>
                       </div>
                     ))}

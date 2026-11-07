@@ -44,7 +44,7 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
       </CardHeader>
       {combatStatsOpen && (
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label htmlFor="armorClass">Armor Class</Label>
               <Input
@@ -72,6 +72,16 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
                 name="maxHp"
                 type="number"
                 value={character.combatStats.maxHp}
+                onChange={handleCombatStatChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="speed">Speed (ft)</Label>
+              <Input
+                id="speed"
+                name="speed"
+                type="number"
+                value={character.combatStats.speed}
                 onChange={handleCombatStatChange}
               />
             </div>
