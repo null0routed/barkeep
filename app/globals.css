@@ -40,6 +40,15 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  /* Display face (Cinzel) for section/card titles — the `font-display` utility,
+     applied by CardTitle and any other chrome heading that wants the face */
+  --font-display: var(--font-cinzel, ui-serif, Georgia, serif);
+
+  /* Player-bubble surface (the "you" panel in chat): calm, world-warm, clearly
+     distinct from the DM's muted bubble without shouting like primary does */
+  --color-user-bubble: hsl(var(--user-bubble));
+  --color-user-bubble-foreground: hsl(var(--user-bubble-foreground));
+
   /* border-radius scale (was `theme.extend.borderRadius`) */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -48,65 +57,77 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    color-scheme: light;
+    /* Parchment — warm cream canvas, iron-gall ink, burnished copper actions */
+    --background: 40 40% 96%;
+    --foreground: 25 35% 14%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 42 45% 98%;
+    --card-foreground: 25 35% 14%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 42 45% 98%;
+    --popover-foreground: 25 35% 14%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 20 72% 40%;
+    --primary-foreground: 42 50% 97%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 38 30% 91%;
+    --secondary-foreground: 25 35% 14%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 38 30% 91%;
+    --muted-foreground: 24 14% 38%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 38 30% 89%;
+    --accent-foreground: 25 35% 14%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 8 68% 40%;
+    --destructive-foreground: 42 50% 97%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 36 25% 84%;
+    --input: 36 25% 84%;
+    --ring: 20 72% 40%;
+
+    /* Player bubble: sepia leather on parchment */
+    --user-bubble: 28 45% 30%;
+    --user-bubble-foreground: 42 50% 96%;
 
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    color-scheme: dark;
+    /* Candlelit — deep umber charcoal, warm ivory text, candlelight amber actions */
+    --background: 26 20% 8%;
+    --foreground: 35 25% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 28 16% 11%;
+    --card-foreground: 35 25% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 28 16% 11%;
+    --popover-foreground: 35 25% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 38 90% 55%;
+    --primary-foreground: 28 50% 10%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 28 14% 16%;
+    --secondary-foreground: 35 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 28 14% 16%;
+    --muted-foreground: 32 14% 64%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 28 14% 18%;
+    --accent-foreground: 35 25% 92%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 8 68% 40%;
+    --destructive-foreground: 35 25% 95%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 30 12% 20%;
+    --input: 30 12% 20%;
+    --ring: 38 85% 60%;
+
+    /* Player bubble: candlelit umber panel, clearly warm but far calmer than primary */
+    --user-bubble: 33 40% 17%;
+    --user-bubble-foreground: 35 30% 90%;
   }
 }
 
@@ -119,8 +140,19 @@
     font-size: 0.95rem;
   }
   h1,
-  h2,
-  h3,
+  h2 {
+    /* Display face for app/panel titles (Barkeep, "DM Chat", Radix dialog titles
+       render as h2). Card titles use the `font-display` utility (see CardTitle). */
+    font-family: var(--font-cinzel, ui-serif, Georgia, serif);
+    letter-spacing: 0.02em;
+  }
+  /* Section titles WITHIN dialogs (e.g. the instructions headings) stay display-serif,
+     while item-level h3s in panels (trait/feat names, spell levels) keep the body face
+     for legibility — that distinction is what keeps the two fonts from colliding. */
+  [role="dialog"] h3 {
+    font-family: var(--font-cinzel, ui-serif, Georgia, serif);
+    letter-spacing: 0.02em;
+  }
   h4,
   h5,
   h6 {

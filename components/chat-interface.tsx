@@ -353,7 +353,10 @@ const ChatMessageComponent = memo(
                   // width it sizes to content (the textarea's ~20ch intrinsic
                   // width), which reads as a slim ~200px box.
                   "w-full bg-background"
-                  : "bg-primary text-primary-foreground"
+                  // Player voice gets its own calm surface (--user-bubble), not the
+                  // full-strength primary amber — distinct from the DM's muted bubble
+                  // without shouting.
+                  : "bg-user-bubble text-user-bubble-foreground"
                 : "bg-muted"
             }`}
           >
@@ -1649,7 +1652,7 @@ export default function ChatInterface({
   return (
   <div className="flex flex-col h-full" ref={containerRef}>
     <div className="flex justify-between items-center mb-4">
-      <h2 className="text-lg font-bold">AI Chat</h2>
+      <h2 className="text-lg font-bold">DM Chat</h2>
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -1714,94 +1717,93 @@ export default function ChatInterface({
                   Common models: gpt-3.5-turbo, gpt-4, llama-3-8b-instruct, mistral-7b-instruct, etc.
                 </p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <Label>Auto-compact context</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Long conversations are summarized (oldest first) into a rolling summary so pre-combat
-                      context and story state survive, instead of dropping the oldest messages. A checkpoint
-                      is saved with each compaction.
-                    </p>
-                  </div>
+                  <Label>Auto-compact context</Label>
                   <Switch
                     checked={compactionSettings.enabled}
                     onCheckedChange={(on) => setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, enabled: on }))}
                     aria-label="Auto-compact context"
                   />
                 </div>
-
-                {compactionSettings.enabled ? (
-                  <>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="ctx-ceiling">Context ceiling (tokens)</Label>
-                        <Input
-                          id="ctx-ceiling"
-                          type="number"
-                          min={8000}
-                          step={1000}
-                          value={compactionSettings.ceilingTokens}
-                          onChange={(e) => {
-                            const v = Number(e.target.value)
-                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, ceilingTokens: v }))
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="ctx-target">Compact to (tokens)</Label>
-                        <Input
-                          id="ctx-target"
-                          type="number"
-                          min={4000}
-                          step={1000}
-                          value={compactionSettings.compactTargetTokens}
-                          onChange={(e) => {
-                            const v = Number(e.target.value)
-                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, compactTargetTokens: v }))
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="ctx-keep">Keep recent messages</Label>
-                        <Input
-                          id="ctx-keep"
-                          type="number"
-                          min={2}
-                          max={100}
-                          value={compactionSettings.keepMessages}
-                          onChange={(e) => {
-                            const v = Number(e.target.value)
-                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, keepMessages: v }))
-                          }}
-                        />
-                      </div>
+                <p className="text-xs text-muted-foreground">
+                  Long conversations are summarized (oldest first) into a rolling summary so pre-combat
+                  context and story state survive, instead of dropping the oldest messages. A checkpoint
+                  is saved with each compaction.
+                </p>
+              </div>
+              {compactionSettings.enabled ? (
+                <div className="space-y-3 sm:col-span-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="ctx-ceiling">Context ceiling (tokens)</Label>
+                      <Input
+                        id="ctx-ceiling"
+                        type="number"
+                        min={8000}
+                        step={1000}
+                        value={compactionSettings.ceilingTokens}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, ceilingTokens: v }))
+                        }}
+                      />
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">
-                        Context grows to the ceiling, then the oldest messages fold into the summary and it
-                        lands near {formatTokenCount(compactionSettings.compactTargetTokens)} tokens. The newest{" "}
-                        {compactionSettings.keepMessages} messages always stay verbatim.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={inFlight}
-                        onClick={() => void compactConversation(true)}
-                      >
-                        {compacting ? "Compacting…" : "Compact now"}
-                      </Button>
+                    <div className="space-y-1">
+                      <Label htmlFor="ctx-target">Compact to (tokens)</Label>
+                      <Input
+                        id="ctx-target"
+                        type="number"
+                        min={4000}
+                        step={1000}
+                        value={compactionSettings.compactTargetTokens}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, compactTargetTokens: v }))
+                        }}
+                      />
                     </div>
-                    {/* T5.2: live estimate of the next turn's context — system (DM prompt + notes +
-                        checkpoints + the rolling summary) plus the budget-fit tail of history. */}
-                    <p className="text-xs text-muted-foreground" aria-live="polite">
-                      ≈ {formatTokenCount(contextEstimate.total)} tokens will go with the next message — the
-                      system prompt and summary alone are ≈ {formatTokenCount(contextEstimate.systemTokens)}.
+                    <div className="space-y-1">
+                      <Label htmlFor="ctx-keep">Keep recent messages</Label>
+                      <Input
+                        id="ctx-keep"
+                        type="number"
+                        min={2}
+                        max={100}
+                        value={compactionSettings.keepMessages}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, keepMessages: v }))
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Context grows to the ceiling, then the oldest messages fold into the summary and it
+                      lands near {formatTokenCount(compactionSettings.compactTargetTokens)} tokens. The newest{" "}
+                      {compactionSettings.keepMessages} messages always stay verbatim.
                     </p>
-                  </>
-                ) : (
-                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={inFlight}
+                      onClick={() => void compactConversation(true)}
+                    >
+                      {compacting ? "Compacting…" : "Compact now"}
+                    </Button>
+                  </div>
+                  {/* T5.2: live estimate of the next turn's context — system (DM prompt + notes +
+                      checkpoints + the rolling summary) plus the budget-fit tail of history. */}
+                  <p className="text-xs text-muted-foreground" aria-live="polite">
+                    ≈ {formatTokenCount(contextEstimate.total)} tokens will go with the next message — the
+                    system prompt and summary alone are ≈ {formatTokenCount(contextEstimate.systemTokens)}.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 sm:col-span-2">
+                  <div className="max-w-60">
                     <Label htmlFor="max-messages">Max Previous Messages</Label>
                     <Input
                       id="max-messages"
@@ -1811,19 +1813,19 @@ export default function ChatInterface({
                       min={1}
                       max={MAX_PREVIOUS_MESSAGES}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Maximum number of previous messages to include in the context (1-80; only used while
-                      auto-compact is off).
-                    </p>
-                    <p className="text-xs text-muted-foreground" aria-live="polite">
-                      ≈ {formatTokenCount(contextEstimate.total)} tokens with the latest{" "}
-                      {Math.min(maxMessages, messages.length)} message
-                      {Math.min(maxMessages, messages.length) === 1 ? "" : "s"} — the system
-                      prompt alone is ≈ {formatTokenCount(contextEstimate.systemTokens)}.
-                    </p>
                   </div>
-                )}
-              </div>
+                  <p className="text-xs text-muted-foreground">
+                    Maximum number of previous messages to include in the context (1-80; only used while
+                    auto-compact is off).
+                  </p>
+                  <p className="text-xs text-muted-foreground" aria-live="polite">
+                    ≈ {formatTokenCount(contextEstimate.total)} tokens with the latest{" "}
+                    {Math.min(maxMessages, messages.length)} message
+                    {Math.min(maxMessages, messages.length) === 1 ? "" : "s"} — the system
+                    prompt alone is ≈ {formatTokenCount(contextEstimate.systemTokens)}.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Image generation (optional) — TODO.MD #9; expandable section, starts collapsed */}

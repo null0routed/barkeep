@@ -36,7 +36,11 @@ const CardTitle = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "text-2xl font-semibold leading-none tracking-tight",
+      // `font-display` = the Cinzel display face: ALL section/card titles
+      // ("Basic Information", "Combat Stats", "Ability Scores", …) share it, while
+      // item-level headings inside the cards (trait/feat names, spell levels) stay
+      // in the body face for legibility.
+      "text-2xl font-semibold leading-none tracking-[0.02em] font-display",
       className
     )}
     {...props}

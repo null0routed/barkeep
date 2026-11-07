@@ -73,9 +73,17 @@ const MarkdownComponents = {
   thead: memo(({ node, ...props }: any) => <thead className="bg-muted" {...props} />),
   th: memo(({ node, ...props }: any) => <th className="border border-border p-2 text-left" {...props} />),
   td: memo(({ node, ...props }: any) => <td className="border border-border p-2" {...props} />),
-  h1: memo(({ node, ...props }: any) => <h1 className="text-2xl font-bold mt-6 mb-4" {...props} />),
-  h2: memo(({ node, ...props }: any) => <h2 className="text-xl font-bold mt-5 mb-3" {...props} />),
-  h3: memo(({ node, ...props }: any) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />),
+  // App-chrome headings render in the Cinzel display face (globals.css base); DM chat
+  // headings stay in the body face — opt out of the global rule explicitly.
+  h1: memo(({ node, ...props }: any) => (
+    <h1 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-2xl font-bold mt-6 mb-4" {...props} />
+  )),
+  h2: memo(({ node, ...props }: any) => (
+    <h2 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-xl font-bold mt-5 mb-3" {...props} />
+  )),
+  h3: memo(({ node, ...props }: any) => (
+    <h3 style={{ fontFamily: "var(--font-inter, ui-sans-serif, sans-serif)" }} className="text-lg font-bold mt-4 mb-2" {...props} />
+  )),
   p: memo(({ node, ...props }: any) => <p className="mb-4" {...props} />),
   ul: memo(({ node, ...props }: any) => <ul className="list-disc pl-6 mb-4" {...props} />),
   ol: memo(({ node, ...props }: any) => <ol className="list-decimal pl-6 mb-4" {...props} />),

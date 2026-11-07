@@ -27,7 +27,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
           <TabsList className="grid grid-cols-3 mb-4">
             <TabsTrigger value="setup">Initial Setup</TabsTrigger>
             <TabsTrigger value="character">Character Sheet</TabsTrigger>
-            <TabsTrigger value="ai">AI Chat</TabsTrigger>
+            <TabsTrigger value="ai">DM Chat</TabsTrigger>
           </TabsList>
 
           <TabsContent value="setup" className="space-y-4">
@@ -38,7 +38,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
                 <li>
-                  Click the <span className="font-mono bg-muted px-1 rounded">⚙️</span> icon in the AI Chat section
+                  Click the <span className="font-mono bg-muted px-1 rounded">⚙️</span> icon in the DM Chat section
                 </li>
                 <li>Enter your OpenAI API key or the API key for your preferred AI service</li>
                 <li>Verify the API URL is correct (default is OpenAI’s endpoint)</li>
@@ -46,7 +46,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                 <li>Add a custom system prompt (optional) to replace the built-in one</li>
                 <li>
                   Optionally expand <span className="font-mono text-xs">Image generation (optional)</span> in the
-                  same settings dialog to let the DM paint major moments as scene images (see the AI Chat tab)
+                  same settings dialog to let the DM paint major moments as scene images (see the DM Chat tab)
                 </li>
               </ol>
             </div>
@@ -135,7 +135,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
 
           <TabsContent value="ai" className="space-y-4">
             <div>
-              <h3 className="font-bold text-lg mb-2">Using the AI Chat</h3>
+              <h3 className="font-bold text-lg mb-2">Using the DM Chat</h3>
               <p className="mb-2">The AI chat is pre-configured as a D&D Dungeon Master, but can be customized:</p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Type messages to talk with the DM</li>

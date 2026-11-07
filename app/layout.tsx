@@ -1,11 +1,14 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
+import { Inter, Cinzel } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
+// Display face for app-chrome headings (h1–h3, see globals.css). Variable font — the
+// full weight axis loads, so `font-bold` panel titles need no extra requests.
+const cinzel = Cinzel({ subsets: ["latin"], variable: "--font-cinzel" })
 
 export const metadata: Metadata = {
   title: "Barkeep",
@@ -30,14 +33,16 @@ export const metadata: Metadata = {
  * emits a build warning on every route) — TODO.MD #6.
  */
 export const viewport: Viewport = {
-  themeColor: "#2D1600",
+  // Matches the dark --background (hsl 26 20% 8%) — mobile browser chrome reads as
+  // part of the app (Candlelit Tavern palette, 2026-11-07).
+  themeColor: "#181410",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <body className={`${inter.className} ${inter.variable} ${cinzel.variable}`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {children}
           <Toaster richColors position="top-center" />
         </ThemeProvider>

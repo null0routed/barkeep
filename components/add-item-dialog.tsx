@@ -97,7 +97,7 @@ export default function AddItemDialog({
       return
     }
     if (!apiUrl) {
-      setGenerationError("The API URL is empty — set one in the AI Chat settings (⚙️).")
+      setGenerationError("The API URL is empty — set one in the Chat Settings (⚙️).")
       return
     }
 
@@ -140,7 +140,7 @@ export default function AddItemDialog({
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error(
-            `The server rejected the request (HTTP ${response.status}) — it likely requires an API key. Set one in the AI Chat settings (⚙️), or point the API URL at a keyless endpoint (e.g. a local Ollama).`,
+            `The server rejected the request (HTTP ${response.status}) — it likely requires an API key. Set one in the Chat Settings (⚙️), or point the API URL at a keyless endpoint (e.g. a local Ollama).`,
           )
         }
         throw new Error(`API error: ${response.status}`)
