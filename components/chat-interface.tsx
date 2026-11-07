@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import type { ChatMessage, CampaignCheckpoint, CharacterData, CampaignNotes } from "@/lib/types"
 import {
   ChevronDownIcon,
@@ -43,12 +44,28 @@ import {
 import MarkdownRenderer from "./markdown-renderer"
 import MessageImageRender from "./message-image-render"
 import { formatCharacterData } from "@/lib/format-character-data"
-import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint } from "@/lib/campaign-checkpoints"
+import { campaignCheckpointTools, runCheckpointTool, formatCheckpoint, saveCheckpoints, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
 import { buildSystemMessageBase } from "@/lib/system-prompt"
 import { collectLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
 import { formatNotesForContext } from "@/lib/campaign-notes"
-import { estimateContextTokens, formatTokenCount } from "@/lib/context-estimate"
+import { estimateContextTokens, estimateTokens, formatTokenCount } from "@/lib/context-estimate"
+import {
+  CALIBRATION_KEY,
+  MIN_COMPACTABLE_MESSAGES,
+  SUMMARY_CALL_RESERVE_TOKENS,
+  applyCalibration,
+  buildCompactionRequest,
+  estimateMessageTokens,
+  fitsWindowStart,
+  formatTranscriptForCompaction,
+  nextCalibration,
+  planCompaction,
+  sanitizeCompactionSettings,
+  summaryWordBudget,
+  type CompactionPlan,
+  type CompactionSettings,
+} from "@/lib/compaction"
 import {
   clampImageRate,
   MIN_IMAGE_RATE,
@@ -63,6 +80,8 @@ import { putImage, deleteImage, clearImages, imageStoreFootprint } from "@/lib/i
 import { formatBytes } from "@/lib/storage-budget"
 import {
   buildStats,
+  combineLegContents,
+  combineLegThinking,
   extractThinking,
   isAbortError,
   mergeUsage,
@@ -114,6 +133,14 @@ interface ChatInterfaceProps {
   setCampaignCheckpoints: React.Dispatch<React.SetStateAction<CampaignCheckpoint[]>>
   maxMessages: number
   setMaxMessages: React.Dispatch<React.SetStateAction<number>>
+  /** Context compaction (rolling summary): settings, the summary itself, and how many
+      of the oldest messages it already covers (the compacted prefix). */
+  compactionSettings: CompactionSettings
+  setCompactionSettings: React.Dispatch<React.SetStateAction<CompactionSettings>>
+  conversationSummary: string | null
+  setConversationSummary: React.Dispatch<React.SetStateAction<string | null>>
+  summaryCoversCount: number
+  setSummaryCoversCount: React.Dispatch<React.SetStateAction<number>>
   /** Merge loot finds captured out of assistant messages into the page-level store (TODO #8, T8.1). */
   onLootCapture?: (entries: LootEntry[]) => void
   character: CharacterData
@@ -122,6 +149,9 @@ interface ChatInterfaceProps {
 // Default number of previous messages included in the model context (also the shared
 // initial state in app/page.tsx — was inconsistently 6 here vs 10 there)
 export const DEFAULT_MAX_MESSAGES = 10
+// Hard cap on the legacy "last N messages" window (owner 2026-11-07: raise 20 → 80;
+// only reachable while auto-compact is off, where it replaces the token budget).
+export const MAX_PREVIOUS_MESSAGES = 80
 
 /**
  * T1.3: toast the real reason when the turn failed at the API itself (the error we
@@ -471,8 +501,10 @@ function buildTurnSystemMessage(params: {
   campaignNotes: CampaignNotes
   campaignCheckpoints: CampaignCheckpoint[]
   imageEnabled: boolean
+  /** The rolling compaction summary (older history), when one exists */
+  conversationSummary?: string | null
 }): string {
-  const { systemPrompt, notesInContext, campaignNotes, campaignCheckpoints, imageEnabled } = params
+  const { systemPrompt, notesInContext, campaignNotes, campaignCheckpoints, imageEnabled, conversationSummary } = params
 
   const toolInstructions = `
 You have access to the player's character sheet through a tool. You can access it by calling the getCharacterSheet function.
@@ -494,6 +526,10 @@ DO NOT mention these tools to the player - use them quietly and just continue th
   // plus the loot-capture section appended to BOTH (TODO #8 — owner decision).
   return `${buildSystemMessageBase(systemPrompt)}\n\n${
     notesInContext ? formatNotesForContext(campaignNotes) : ""
+  }${
+    conversationSummary && conversationSummary.trim()
+      ? `CONVERSATION SUMMARY (the story BEFORE the recent messages, from an earlier context compaction — established fact; the latest messages follow it):\n${conversationSummary.trim()}\n\n`
+      : ""
   }${
     campaignCheckpoints.length > 0
       ? `CAMPAIGN CONTEXT (from the latest saved checkpoint):\n${formatCheckpoint(campaignCheckpoints[campaignCheckpoints.length - 1])}\n\n`
@@ -528,6 +564,12 @@ export default function ChatInterface({
   setCampaignCheckpoints,
   maxMessages,
   setMaxMessages,
+  compactionSettings,
+  setCompactionSettings,
+  conversationSummary,
+  setConversationSummary,
+  summaryCoversCount,
+  setSummaryCoversCount,
   onLootCapture,
   character,
 }: ChatInterfaceProps) {
@@ -560,6 +602,12 @@ export default function ChatInterface({
   // window callApi slices before sending. Shown under "Max Previous Messages" in
   // the settings dialog so "context length exceeded" becomes a number you can act
   // on (lower the limit, trim the prompt/notes) instead of a mystery.
+  // T5.2: context-size transparency. A rough, honest figure (~4 chars/token + 4/message)
+  // of what the NEXT turn will send — the same resolved system message callApi uses
+  // (including the rolling summary when one exists) PLUS the raw tail the send path
+  // will window. With compaction on that tail is budget-fit; with it off, the legacy
+  // "last N messages". Shown in settings so "context length exceeded" becomes a number
+  // you can act on instead of a mystery.
   const contextEstimate = useMemo(() => {
     const systemMessage = buildTurnSystemMessage({
       systemPrompt,
@@ -567,9 +615,31 @@ export default function ChatInterface({
       campaignNotes,
       campaignCheckpoints,
       imageEnabled: imageApiUrl.trim().length > 0,
+      conversationSummary,
     })
+    if (compactionSettings.enabled) {
+      const covered = Math.max(0, Math.min(summaryCoversCount, messages.length))
+      const budget = Math.max(0, compactionSettings.ceilingTokens - estimateTokens(systemMessage))
+      const start = fitsWindowStart(
+        messages.slice(covered).map((m) => estimateMessageTokens(m.content)),
+        0,
+        budget,
+      )
+      return estimateContextTokens(systemMessage, messages.slice(covered + start))
+    }
     return estimateContextTokens(systemMessage, messages.slice(-maxMessages))
-  }, [systemPrompt, notesInContext, campaignNotes, campaignCheckpoints, imageApiUrl, messages, maxMessages])
+  }, [
+    systemPrompt,
+    notesInContext,
+    campaignNotes,
+    campaignCheckpoints,
+    imageApiUrl,
+    messages,
+    maxMessages,
+    compactionSettings,
+    conversationSummary,
+    summaryCoversCount,
+  ])
 
   // Loot capture (TODO #8, T8.1): pull barkeep-loot fences out of assistant messages
   // and hand them to the page-level store (state lives in app/page.tsx). Processing
@@ -821,6 +891,9 @@ export default function ChatInterface({
             campaignNotes,
             campaignCheckpoints,
             imageEnabled,
+            // The rolling compaction summary (older story) rides here — the caller
+            // already excluded its messages from `conversation`
+            conversationSummary,
           }),
         }
 
@@ -834,7 +907,10 @@ export default function ChatInterface({
         // One leg of the turn: POST (trying `stream: true`) and accumulate its answer —
         // text content (streamed to onDelta as it lands), thinking, usage, and any tool
         // calls — from an SSE body (preferred) or, as the fallback, a single JSON document.
-        const runLeg = async (payload: Record<string, unknown>) => {
+        // `prefix` is text to prepend to every onDelta report (leg two gets leg one's
+        // text) so the bubble only ever grows across the tool round-trip; the leg's own
+        // returned content stays raw, because that is what the API conversation needs.
+        const runLeg = async (payload: Record<string, unknown>, prefix = "") => {
           const response = await fetch(apiUrl, {
             method: "POST",
             headers: {
@@ -883,7 +959,7 @@ export default function ChatInterface({
               if (!delta) continue
               if (typeof delta.content === "string") {
                 content += delta.content
-                onDelta?.(content)
+                onDelta?.(prefix + content)
               }
               takeThinking(delta)
               if (delta.tool_calls) {
@@ -922,7 +998,7 @@ export default function ChatInterface({
               }
             }
             // Surface the already-complete content as a single delta so callers are uniform.
-            if (content) onDelta?.(content)
+            if (prefix || content) onDelta?.(prefix + content)
           }
 
           return {
@@ -944,6 +1020,22 @@ export default function ChatInterface({
           stream_options: { include_usage: true },
         })
 
+        // Calibrate the (deliberately dumb) chars/4 estimator against the provider's own
+        // count for THIS request: the ratio absorbs the tool-schema + overhead tokens the
+        // heuristic can't see, so planning/windowing track reality per endpoint.
+        if (leg1.usage && typeof leg1.usage.prompt_tokens === "number" && leg1.usage.prompt_tokens > 0) {
+          const estimated = estimateContextTokens(systemMessage.content, conversation).total
+          const next = nextCalibration(calibrationRef.current, estimated, leg1.usage.prompt_tokens)
+          if (next !== calibrationRef.current) {
+            calibrationRef.current = next
+            try {
+              window.localStorage.setItem(CALIBRATION_KEY, String(next))
+            } catch {
+              /* private mode / storage full — estimation keeps the session value */
+            }
+          }
+        }
+
         if (leg1.toolCalls.length > 0) {
           // handleToolCalls is async (the generateImage tool performs a network call and an
           // IndexedDB write). It returns the per-call results for the follow-up leg plus the
@@ -954,15 +1046,22 @@ export default function ChatInterface({
             content: leg1.content || null,
             tool_calls: leg1.toolCalls,
           }
-          const leg2 = await runLeg({
-            model: model,
-            messages: [...apiMessages, firstMessage, ...toolResults],
-            stream: true,
-            stream_options: { include_usage: true },
-          })
+          // Leg two streams with leg one's text prepended so the bubble grows instead of
+          // being replaced mid-turn (this is what wiped the narration before a checkpoint).
+          const leg2 = await runLeg(
+            {
+              model: model,
+              messages: [...apiMessages, firstMessage, ...toolResults],
+              stream: true,
+              stream_options: { include_usage: true },
+            },
+            leg1.content,
+          )
           return {
-            content: leg2.content,
-            thinking: leg2.thinking,
+            // The persisted turn is BOTH legs: leg one's narration up to the tool call
+            // plus leg two's continuation. Dropping leg one here was the permanent-loss half.
+            content: combineLegContents(leg1.content, leg2.content),
+            thinking: combineLegThinking(leg1.thinking, leg2.thinking),
             stats: buildStats(mergeUsage(leg1.usage, leg2.usage), startedAt, conversation.length),
             ...(image ? { image } : {}),
           }
@@ -978,7 +1077,7 @@ export default function ChatInterface({
         throw error
       }
     },
-    [model, apiKey, apiUrl, imageApiUrl, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, handleToolCalls],
+    [model, apiKey, apiUrl, imageApiUrl, systemPrompt, campaignNotes, notesInContext, campaignCheckpoints, conversationSummary, handleToolCalls],
   )
 
   // Shared turn bookkeeping: creates the assistant bubble under a stable id up front
@@ -1044,6 +1143,209 @@ export default function ChatInterface({
     [callApi, setMessages],
   )
 
+  // ---------------------------------------------------------------------------
+  // Context compaction (rolling summary, OpenCode-style): instead of a fixed
+  // "last N messages" window, one turn's context is a TOKEN budget —
+  //   system + rolling summary + raw tail ≤ ceiling
+  // When history outgrows the budget, the OLDEST raw messages are folded into the
+  // rolling summary (the newest `keepMessages` always ride verbatim), the summary
+  // carries that history forward, and an automatic checkpoint anchors the story
+  // state (owner decision: auto-checkpoint per compaction). The full chat array is
+  // never mutated — UI + persistence keep every message.
+  // ---------------------------------------------------------------------------
+  const [compacting, setCompacting] = useState(false)
+  // Learned estimate→actual token ratio (absorbs tool schemas + overhead the chars/4
+  // heuristic can't see). localStorage-mirrored; a session-only value in private mode.
+  const [initialCalibration] = useState<number>(() => {
+    try {
+      const value = Number(window.localStorage.getItem(CALIBRATION_KEY))
+      return Number.isFinite(value) && value > 0 ? value : 1
+    } catch {
+      return 1
+    }
+  })
+  const calibrationRef = useRef(initialCalibration)
+
+  /** The next turn's plan: what to fold into the summary, and the raw tail to send. */
+  const planContext = useCallback(
+    (force: boolean) => {
+      const cal = calibrationRef.current
+      const covered = Math.max(0, Math.min(summaryCoversCount, messages.length))
+      const rawMessages = messages.slice(covered)
+      const systemMessage = buildTurnSystemMessage({
+        systemPrompt,
+        notesInContext,
+        campaignNotes,
+        campaignCheckpoints,
+        imageEnabled: imageApiUrl.trim().length > 0,
+        conversationSummary: null,
+      })
+      const plan = planCompaction({
+        messageTokens: rawMessages.map((m) => applyCalibration(estimateMessageTokens(m.content), cal)),
+        summaryTokens: conversationSummary ? applyCalibration(estimateTokens(conversationSummary), cal) : 0,
+        systemTokens: applyCalibration(estimateTokens(systemMessage), cal),
+        ceilingTokens: compactionSettings.ceilingTokens,
+        compactTargetTokens: compactionSettings.compactTargetTokens,
+        keepMessages: compactionSettings.keepMessages,
+        force,
+      })
+      return { plan, covered, rawMessages }
+    },
+    [
+      messages,
+      summaryCoversCount,
+      systemPrompt,
+      notesInContext,
+      campaignNotes,
+      campaignCheckpoints,
+      imageApiUrl,
+      conversationSummary,
+      compactionSettings,
+    ],
+  )
+
+  /**
+   * Runs the compaction passes of one computed plan (oldest-first, each pass MERGING
+   * into the rolling summary), then commits: new summary, advanced coverage boundary,
+   * and the automatic checkpoint. Throws on the first failed pass — nothing is
+   * committed when a pass fails, so the next event retries from the same boundary.
+   */
+  const performCompaction = useCallback(
+    async (plan: CompactionPlan, covered: number, rawMessages: ChatMessage[]): Promise<void> => {
+      const cal = calibrationRef.current
+      let summary = conversationSummary
+      let folded = 0
+      for (const span of plan.passes) {
+        const request = buildCompactionRequest(
+          summary,
+          formatTranscriptForCompaction(rawMessages.slice(span.from, span.to)),
+          // Word budget from the summary's token slot (ceiling − call reserve − the
+          // existing summary − a share for the kept tail)
+          summaryWordBudget(
+            Math.max(
+              500,
+              compactionSettings.ceilingTokens -
+                SUMMARY_CALL_RESERVE_TOKENS -
+                (summary ? applyCalibration(estimateTokens(summary), cal) : 0) -
+                Math.round(compactionSettings.compactTargetTokens * 0.5),
+            ),
+          ),
+        )
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey.trim() ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: request.system },
+              { role: "user", content: request.user },
+            ],
+            temperature: 0.2,
+          }),
+          // The Stop button governs compaction too (one shared controller per event)
+          signal: abortRef.current?.signal,
+        })
+        if (!response.ok) {
+          const detail = await readErrorDetail(response)
+          throw new Error(detail ? `Compaction failed: ${response.status} — ${detail}` : `Compaction failed: ${response.status}`)
+        }
+        // Some endpoints honor the plain request (one JSON document); others stream
+        // SSE regardless — accumulate whichever arrives.
+        const contentType = response.headers.get("content-type") ?? ""
+        let text = ""
+        if (contentType.includes("text/event-stream") && response.body) {
+          for await (const chunk of iterateStream(response.body)) {
+            if (typeof chunk !== "object" || chunk === null) continue
+            const c = chunk as Record<string, unknown>
+            const choices = Array.isArray(c.choices) ? (c.choices as Array<Record<string, unknown>>) : []
+            const delta = choices[0]?.delta as Record<string, unknown> | undefined
+            if (delta && typeof delta.content === "string") text += delta.content
+          }
+        } else {
+          const data = (await response.json()) as Record<string, unknown>
+          const choices = Array.isArray(data.choices) ? (data.choices as Array<Record<string, unknown>>) : []
+          const first = choices[0] ?? {}
+          const message = (typeof first.message === "object" && first.message !== null ? first.message : {}) as Record<string, unknown>
+          text = typeof message.content === "string" ? message.content : typeof first.content === "string" ? (first.content as string) : ""
+        }
+        const cleaned = text.trim()
+        if (!cleaned) throw new Error("Compaction failed: the model returned an empty summary")
+        summary = cleaned
+        folded += span.to - span.from
+      }
+
+      // Commit: the summary grows, the coverage boundary advances past everything
+      // folded, and the automatic checkpoint gives the story state a durable anchor.
+      setConversationSummary(summary)
+      setSummaryCoversCount(covered + plan.passes[plan.passes.length - 1].to)
+      const autoCheckpoint: CampaignCheckpoint = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        title: `Story state — ${new Date().toLocaleDateString()}`,
+        summary: summary as string,
+      }
+      // Same write-time persistence as the saveCampaignCheckpoint tool: the store is
+      // capped at MAX_CHECKPOINTS_STORED (oldest pruned), saved to localStorage, and
+      // the state update follows — so a closed tab right after compaction loses nothing.
+      const nextCheckpoints = [...campaignCheckpoints, autoCheckpoint]
+      const pruned = Math.max(0, nextCheckpoints.length - MAX_CHECKPOINTS_STORED)
+      const checkpoints = pruned > 0 ? nextCheckpoints.slice(pruned) : nextCheckpoints
+      const checkpointResult = saveCheckpoints(checkpoints)
+      if (checkpointResult.ok) {
+        setCampaignCheckpoints(checkpoints)
+      } else {
+        toast.warning(
+          `Compacted ${folded} older message${folded === 1 ? "" : "s"}, but the checkpoint could not be saved (${checkpointResult.error ?? "storage error"}).`,
+        )
+        return
+      }
+      toast.success(`Compacted ${folded} older message${folded === 1 ? "" : "s"} into the running summary and saved a checkpoint.`)
+    },
+    [campaignCheckpoints, conversationSummary, compactionSettings, apiUrl, apiKey, model, setConversationSummary, setSummaryCoversCount, setCampaignCheckpoints],
+  )
+
+  /** Manual "Compact now" — force a plan and run it. Returns true when it compacted. */
+  const compactConversation = useCallback(
+    async (force: boolean): Promise<boolean> => {
+      if (compacting) return false
+      const { plan, covered, rawMessages } = planContext(force)
+      if (plan.passes.length === 0) {
+        if (force) {
+          toast.info(
+            plan.compactableCount < MIN_COMPACTABLE_MESSAGES
+              ? "Not enough history to compact yet."
+              : "Nothing to compact — the context already fits within its limits.",
+          )
+        }
+        return false
+      }
+      setCompacting(true)
+      try {
+        abortRef.current = new AbortController()
+        await performCompaction(plan, covered, rawMessages)
+        return true
+      } catch (error) {
+        if (isAbortError(error)) {
+          toast.info("Stopped.")
+        } else {
+          console.error("Error compacting the conversation:", error)
+          toast.error(
+            error instanceof Error && error.message.startsWith("Compaction failed")
+              ? error.message
+              : "Compaction failed — the recent messages stay in context; the rest waits for the next compaction.",
+          )
+        }
+        return false
+      } finally {
+        setCompacting(false)
+      }
+    },
+    [compacting, planContext, performCompaction],
+  )
+
   const handleSubmit = useCallback(
     async (e: React.SyntheticEvent) => {
       e.preventDefault()
@@ -1060,14 +1362,72 @@ export default function ChatInterface({
       setIsLoading(true)
 
       try {
-        // Get the most recent messages, limited by maxMessages
-        const recentMessages = messages.slice(-maxMessages)
-        console.log(
-          `Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`,
-        )
+        // Context window: with compaction on, a token budget (the rolling summary of
+        // older history rides in the system message; compact first if history outgrew
+        // the budget); with it off, the legacy "last N messages" window.
+        let conversation: ChatMessage[]
+        if (compactionSettings.enabled) {
+          const { plan, covered, rawMessages } = planContext(false)
+          let compacted = false
+          if (plan.passes.length > 0) {
+            abortRef.current = new AbortController()
+            try {
+              await performCompaction(plan, covered, rawMessages)
+              compacted = true
+            } catch (error) {
+              if (isAbortError(error)) {
+                toast.info("Compaction stopped — sending without it.")
+              } else {
+                console.error("Error compacting the conversation:", error)
+                toast.error(
+                  error instanceof Error && error.message.startsWith("Compaction failed")
+                    ? error.message
+                    : "Compaction failed — the recent messages stay in context; the rest waits for the next compaction.",
+                )
+              }
+            }
+          }
+          // The window is always computed against the EFFECTIVE (post-event) state:
+          // on success the plan's sendsFrom (summary merged, boundary advanced); on
+          // failure the un-compacted raw region fits around the OLD summary — so no
+          // message is ever both un-summarized and un-sent.
+          let sendStart: number
+          if (compacted) {
+            sendStart = covered + plan.sendsFrom
+          } else {
+            const cal = calibrationRef.current
+            const systemTokens = applyCalibration(
+              estimateTokens(
+                buildTurnSystemMessage({
+                  systemPrompt,
+                  notesInContext,
+                  campaignNotes,
+                  campaignCheckpoints,
+                  imageEnabled: imageApiUrl.trim().length > 0,
+                  conversationSummary: null,
+                }),
+              ),
+              cal,
+            )
+            const summaryTokens = conversationSummary ? applyCalibration(estimateTokens(conversationSummary), cal) : 0
+            sendStart =
+              covered +
+              fitsWindowStart(
+                messages.slice(covered).map((m) => applyCalibration(estimateMessageTokens(m.content), cal)),
+                summaryTokens,
+                Math.max(0, compactionSettings.ceilingTokens - systemTokens),
+              )
+          }
+          conversation = [...messages.slice(sendStart), userMessage]
+          console.log(`Sending ${conversation.length} messages (of ${messages.length + 1}) — compaction ${compacted ? "ran" : "skipped"}.`)
+        } else {
+          const recentMessages = messages.slice(-maxMessages)
+          conversation = [...recentMessages, userMessage]
+          console.log(`Using ${recentMessages.length} recent messages out of ${messages.length} total (limit: ${maxMessages})`)
+        }
 
         abortRef.current = new AbortController()
-        await runAssistant([...recentMessages, userMessage])
+        await runAssistant(conversation)
       } catch (error) {
         if (isAbortError(error)) {
           toast.info("Stopped.")
@@ -1088,7 +1448,22 @@ export default function ChatInterface({
         }
       }
     },
-    [input, messages, maxMessages, setMessages, runAssistant],
+    [
+      input,
+      messages,
+      maxMessages,
+      setMessages,
+      runAssistant,
+      compactionSettings,
+      conversationSummary,
+      planContext,
+      performCompaction,
+      systemPrompt,
+      notesInContext,
+      campaignNotes,
+      campaignCheckpoints,
+      imageApiUrl,
+    ],
   )
 
   const handleDeleteMessage = useCallback(
@@ -1097,6 +1472,14 @@ export default function ChatInterface({
       // fire-and-forget and never throws, so a pending store write can't block the removal.
       const target = messages.find((msg) => msg.id === id)
       if (target?.image?.id) void deleteImage(target.image.id)
+
+      // The compaction coverage is a PREFIX length of `messages`: deleting inside the
+      // covered region shifts the boundary back by one (the summary already carries
+      // that text, so nothing is lost either way).
+      const deletedIndex = messages.findIndex((msg) => msg.id === id)
+      if (deletedIndex !== -1 && deletedIndex < summaryCoversCount) {
+        setSummaryCoversCount((prev) => Math.max(0, prev - 1))
+      }
 
       setMessages((prev) => {
         // Find the index of the message to delete
@@ -1109,7 +1492,7 @@ export default function ChatInterface({
         return newMessages
       })
     },
-    [messages, setMessages],
+    [messages, setMessages, summaryCoversCount, setSummaryCoversCount],
   )
 
   const handleRegenerateMessage = useCallback(
@@ -1131,9 +1514,40 @@ export default function ChatInterface({
       setRegeneratingId(id)
 
       try {
-        // Get context messages (messages before the user message), then re-run the turn
-        // and update the existing assistant bubble in place (same id → no remount)
-        const conversation = [...messages.slice(0, userIndex), userMessage]
+        // Rebuild the context the same way a fresh send would. With compaction on the
+        // prefix is budget-windowed (the rolling summary rides in the system message);
+        // with it off, keep the legacy "everything before this turn" behavior.
+        let conversation: ChatMessage[]
+        const prefix = messages.slice(0, userIndex)
+        if (compactionSettings.enabled) {
+          const cal = calibrationRef.current
+          const covered = Math.max(0, Math.min(summaryCoversCount, prefix.length))
+          const effRaw = prefix.slice(covered)
+          const systemTokens = applyCalibration(
+            estimateTokens(
+              buildTurnSystemMessage({
+                systemPrompt,
+                notesInContext,
+                campaignNotes,
+                campaignCheckpoints,
+                imageEnabled: imageApiUrl.trim().length > 0,
+                conversationSummary: null,
+              }),
+            ),
+            cal,
+          )
+          const summaryTokens = conversationSummary ? applyCalibration(estimateTokens(conversationSummary), cal) : 0
+          const start =
+            covered +
+            fitsWindowStart(
+              effRaw.map((m) => applyCalibration(estimateMessageTokens(m.content), cal)),
+              summaryTokens,
+              Math.max(0, compactionSettings.ceilingTokens - systemTokens),
+            )
+          conversation = [...prefix.slice(start), userMessage]
+        } else {
+          conversation = [...prefix, userMessage]
+        }
         abortRef.current = new AbortController()
         await runAssistant(conversation, id)
       } catch (error) {
@@ -1147,18 +1561,30 @@ export default function ChatInterface({
         setRegeneratingId(null)
       }
     },
-    [messages, runAssistant],
+    [
+      messages,
+      runAssistant,
+      compactionSettings,
+      conversationSummary,
+      summaryCoversCount,
+      systemPrompt,
+      notesInContext,
+      campaignNotes,
+      campaignCheckpoints,
+      imageApiUrl,
+    ],
   )
 
-  // TODO.MD #3.3: abort the in-flight turn. Whatever content already rendered stays;
-  // the abort surfaces as a neutral "Stopped." toast in the caller's catch.
+  // TODO.MD #3.3: abort the in-flight turn (or the in-flight compaction — same
+  // controller). Whatever content already rendered stays; the abort surfaces as a
+  // neutral "Stopped." toast in the caller's catch.
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
   }, [])
 
-  // True while any turn is running OR a message is in inline edit — gates the
-  // per-bubble actions and the composer so turns and edits never interleave.
-  const inFlight = isLoading || regeneratingId !== null || editingId !== null
+  // True while any turn is running OR a message is in inline edit OR compaction is in
+  // flight — gates the per-bubble actions and the composer so none of these interleave.
+  const inFlight = isLoading || regeneratingId !== null || editingId !== null || compacting
 
   // TODO.MD #3.2 (edit): begin inline editing of a user message
   const startEdit = useCallback(
@@ -1288,29 +1714,115 @@ export default function ChatInterface({
                   Common models: gpt-3.5-turbo, gpt-4, llama-3-8b-instruct, mistral-7b-instruct, etc.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-messages">Max Previous Messages</Label>
-                <Input
-                  id="max-messages"
-                  type="number"
-                  value={maxMessages}
-                  onChange={(e) =>
-                    setMaxMessages(Math.max(1, Number.parseInt(e.target.value) || DEFAULT_MAX_MESSAGES))
-                  }
-                  min={1}
-                  max={20}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Maximum number of previous messages to include in the context (1-20).
-                </p>
-                {/* T5.2: live estimate of the next turn's context size (resolved system
-                    message + the last N messages, exactly how callApi assembles it). */}
-                <p className="text-xs text-muted-foreground" aria-live="polite">
-                  ≈ {formatTokenCount(contextEstimate.total)} tokens with the latest{" "}
-                  {Math.min(maxMessages, messages.length)} message
-                  {Math.min(maxMessages, messages.length) === 1 ? "" : "s"} — the system
-                  prompt alone is ≈ {formatTokenCount(contextEstimate.systemTokens)}.
-                </p>
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Label>Auto-compact context</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Long conversations are summarized (oldest first) into a rolling summary so pre-combat
+                      context and story state survive, instead of dropping the oldest messages. A checkpoint
+                      is saved with each compaction.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={compactionSettings.enabled}
+                    onCheckedChange={(on) => setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, enabled: on }))}
+                    aria-label="Auto-compact context"
+                  />
+                </div>
+
+                {compactionSettings.enabled ? (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="ctx-ceiling">Context ceiling (tokens)</Label>
+                        <Input
+                          id="ctx-ceiling"
+                          type="number"
+                          min={8000}
+                          step={1000}
+                          value={compactionSettings.ceilingTokens}
+                          onChange={(e) => {
+                            const v = Number(e.target.value)
+                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, ceilingTokens: v }))
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="ctx-target">Compact to (tokens)</Label>
+                        <Input
+                          id="ctx-target"
+                          type="number"
+                          min={4000}
+                          step={1000}
+                          value={compactionSettings.compactTargetTokens}
+                          onChange={(e) => {
+                            const v = Number(e.target.value)
+                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, compactTargetTokens: v }))
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="ctx-keep">Keep recent messages</Label>
+                        <Input
+                          id="ctx-keep"
+                          type="number"
+                          min={2}
+                          max={100}
+                          value={compactionSettings.keepMessages}
+                          onChange={(e) => {
+                            const v = Number(e.target.value)
+                            if (Number.isFinite(v)) setCompactionSettings((s) => sanitizeCompactionSettings({ ...s, keepMessages: v }))
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        Context grows to the ceiling, then the oldest messages fold into the summary and it
+                        lands near {formatTokenCount(compactionSettings.compactTargetTokens)} tokens. The newest{" "}
+                        {compactionSettings.keepMessages} messages always stay verbatim.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={inFlight}
+                        onClick={() => void compactConversation(true)}
+                      >
+                        {compacting ? "Compacting…" : "Compact now"}
+                      </Button>
+                    </div>
+                    {/* T5.2: live estimate of the next turn's context — system (DM prompt + notes +
+                        checkpoints + the rolling summary) plus the budget-fit tail of history. */}
+                    <p className="text-xs text-muted-foreground" aria-live="polite">
+                      ≈ {formatTokenCount(contextEstimate.total)} tokens will go with the next message — the
+                      system prompt and summary alone are ≈ {formatTokenCount(contextEstimate.systemTokens)}.
+                    </p>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="max-messages">Max Previous Messages</Label>
+                    <Input
+                      id="max-messages"
+                      type="number"
+                      value={maxMessages}
+                      onChange={(e) => setMaxMessages(Math.min(MAX_PREVIOUS_MESSAGES, Math.max(1, Number.parseInt(e.target.value) || DEFAULT_MAX_MESSAGES)))}
+                      min={1}
+                      max={MAX_PREVIOUS_MESSAGES}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum number of previous messages to include in the context (1-80; only used while
+                      auto-compact is off).
+                    </p>
+                    <p className="text-xs text-muted-foreground" aria-live="polite">
+                      ≈ {formatTokenCount(contextEstimate.total)} tokens with the latest{" "}
+                      {Math.min(maxMessages, messages.length)} message
+                      {Math.min(maxMessages, messages.length) === 1 ? "" : "s"} — the system
+                      prompt alone is ≈ {formatTokenCount(contextEstimate.systemTokens)}.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

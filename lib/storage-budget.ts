@@ -1,6 +1,12 @@
 import { NOTES_STORAGE_KEY, NOTES_CONTEXT_KEY } from "./campaign-notes"
 import { CHECKPOINTS_STORAGE_KEY } from "./campaign-checkpoints"
 import { LOOT_STORAGE_KEY } from "./loot"
+import {
+  COMPACTION_SETTINGS_KEY,
+  CONVERSATION_SUMMARY_KEY,
+  SUMMARY_COVERS_KEY,
+  CALIBRATION_KEY,
+} from "./compaction"
 
 /**
  * Browser storage budget (TODO #1 — locked spec).
@@ -121,4 +127,9 @@ export const APP_STORAGE_KEYS = [
   NOTES_CONTEXT_KEY,
   CHECKPOINTS_STORAGE_KEY,
   LOOT_STORAGE_KEY,
+  // Context compaction (rolling summary) + estimate calibration
+  COMPACTION_SETTINGS_KEY,
+  CONVERSATION_SUMMARY_KEY,
+  SUMMARY_COVERS_KEY,
+  CALIBRATION_KEY,
 ]

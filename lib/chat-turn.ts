@@ -141,6 +141,28 @@ export function toAssistantTurn(
   }
 }
 
+/**
+ * Combine the visible content of the two legs of a tool round-trip into the turn's
+ * content. NEITHER leg may be dropped: leg one is the model's narration up to the tool
+ * call, leg two its continuation after the result — the turn the player reads is both.
+ * (A checkpoint-style leg-two that is empty means the narration is leg one's, full stop.)
+ */
+export function combineLegContents(leg1: string, leg2: string): string {
+  return leg1 + leg2
+}
+
+/**
+ * Combine the model thinking of the two legs: keep whichever legs surfaced some, in
+ * order. Undefined when neither leg had any (matches the AssistantTurn contract).
+ */
+export function combineLegThinking(
+  leg1: string | undefined,
+  leg2: string | undefined,
+): string | undefined {
+  const parts = [leg1, leg2].filter((part): part is string => typeof part === "string" && part.length > 0)
+  return parts.length > 0 ? parts.join("\n") : undefined
+}
+
 /** True for a user-initiated abort (fetch AbortController), not a real API failure (TODO.MD #3.3). */
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError"

@@ -3,6 +3,8 @@ import assert from "node:assert/strict"
 
 import {
   buildStats,
+  combineLegContents,
+  combineLegThinking,
   extractThinking,
   isAbortError,
   mergeUsage,
@@ -66,6 +68,29 @@ test("mergeUsage tolerates undefined legs and missing sub-fields", () => {
     mergeUsage({ prompt_tokens: Number.NaN }, { prompt_tokens: 1 }),
     { prompt_tokens: 1, completion_tokens: undefined, total_tokens: undefined },
   )
+})
+
+test("combineLegContents keeps BOTH legs of a tool round-trip, in order", () => {
+  assert.equal(combineLegContents("The door creaks open…", " You step inside."), "The door creaks open… You step inside.")
+})
+
+test("combineLegContents keeps the narration when the follow-up leg is empty", () => {
+  // The checkpoint case: leg two returned nothing after saving the checkpoint —
+  // leg one's narration must survive the settled turn.
+  assert.equal(combineLegContents("Checkpoint saved.", ""), "Checkpoint saved.")
+})
+
+test("combineLegContents is empty only when both legs are empty", () => {
+  assert.equal(combineLegContents("", ""), "")
+})
+
+test("combineLegThinking joins present legs and stays undefined when neither has some", () => {
+  assert.equal(combineLegThinking("think one", "think two"), "think one\nthink two")
+  assert.equal(combineLegThinking("only leg one", undefined), "only leg one")
+  assert.equal(combineLegThinking(undefined, "only leg two"), "only leg two")
+  assert.equal(combineLegThinking(undefined, undefined), undefined)
+  // empty-string thinking is treated as absent
+  assert.equal(combineLegThinking("", ""), undefined)
 })
 
 test("buildStats maps usage + timing into TurnStats", () => {

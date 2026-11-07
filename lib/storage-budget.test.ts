@@ -39,6 +39,10 @@ test("APP_STORAGE_KEYS: covers every dnd-* key the app writes", () => {
     "dnd-notes-in-context",
     "dnd-campaign-checkpoints",
     "dnd-loot",
+    "dnd-compaction-settings",
+    "dnd-conversation-summary",
+    "dnd-summary-covers",
+    "dnd-context-calibration",
   ])
   assert.equal(new Set(APP_STORAGE_KEYS).size, APP_STORAGE_KEYS.length) // no duplicates
 })

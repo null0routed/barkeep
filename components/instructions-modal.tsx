@@ -141,6 +141,12 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                 <li>Type messages to talk with the DM</li>
                 <li>The built-in prompt runs the chat as a D&amp;D Dungeon Master</li>
                 <li>Optionally add a custom system prompt in the AI chat settings to replace it</li>
+                <li>
+                  Long sessions auto-compact: once the context nears its ceiling, the oldest messages fold into a
+                  running summary (and a checkpoint) instead of dropping — so story context survives. The newest
+                  messages always stay verbatim, and you can trigger a{" "}
+                  <span className="font-mono text-xs">Compact now</span> from the AI chat settings
+                </li>
                 <li>Chat history is saved along with your character sheet</li>
                 <li>
                   If image generation is enabled, the DM may paint major moments as scene images — see{" "}

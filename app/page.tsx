@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { MoreHorizontalIcon, AlertTriangleIcon, SunIcon, MoonIcon } from "lucide-react"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
-import ChatInterface, { DEFAULT_MAX_MESSAGES } from "@/components/chat-interface"
+import ChatInterface, { DEFAULT_MAX_MESSAGES, MAX_PREVIOUS_MESSAGES } from "@/components/chat-interface"
 import InstructionsModal from "@/components/instructions-modal"
 import AboutModal from "@/components/about-modal"
 import ExportDialog from "@/components/export-dialog"
@@ -20,6 +20,14 @@ import { deleteImage } from "@/lib/image-store"
 import { LOOT_STORAGE_KEY, mergeLoot, sanitizeStoredLoot } from "@/lib/loot"
 import type { LootEntry } from "@/lib/loot"
 import { loadCheckpoints, sanitizeCheckpoints, CHECKPOINTS_STORAGE_KEY, MAX_CHECKPOINTS_STORED } from "@/lib/campaign-checkpoints"
+import {
+  DEFAULT_COMPACTION_SETTINGS,
+  sanitizeCompactionSettings,
+  COMPACTION_SETTINGS_KEY,
+  CONVERSATION_SUMMARY_KEY,
+  SUMMARY_COVERS_KEY,
+  type CompactionSettings,
+} from "@/lib/compaction"
 import {
   NOTES_STORAGE_KEY,
   NOTES_CONTEXT_KEY,
@@ -107,6 +115,13 @@ export default function Home() {
     }
   }, [moreMenuOpen])
   const [maxMessages, setMaxMessages] = useState<number>(DEFAULT_MAX_MESSAGES)
+
+  // Context compaction (OpenCode-style rolling summary): the settings, the summary
+  // itself, and how many of the OLDEST chat messages it already covers (the compacted
+  // prefix — chat-interface sends everything after it as the raw tail).
+  const [compactionSettings, setCompactionSettings] = useState<CompactionSettings>(DEFAULT_COMPACTION_SETTINGS)
+  const [conversationSummary, setConversationSummary] = useState<string | null>(null)
+  const [summaryCoversCount, setSummaryCoversCount] = useState<number>(0)
 
   // Resizable split between the two panels (desktop only). panelRatio is the left
   // panel's share in percent; persisted under dnd-panel-ratio like the other dnd-* keys.
@@ -219,6 +234,9 @@ export default function Home() {
     const savedImageModel = localStorage.getItem("dnd-image-model")
     const savedImageRate = localStorage.getItem("dnd-image-rate")
     const savedImageSize = localStorage.getItem("dnd-image-size")
+    const savedCompactionSettings = localStorage.getItem(COMPACTION_SETTINGS_KEY)
+    const savedConversationSummary = localStorage.getItem(CONVERSATION_SUMMARY_KEY)
+    const savedSummaryCovers = localStorage.getItem(SUMMARY_COVERS_KEY)
 
     if (savedCharacter) {
       try {
@@ -249,8 +267,8 @@ export default function Home() {
     setSystemPrompt(migrateStoredSystemPrompt(savedSystemPrompt))
     if (savedMaxMessages) {
       const parsed = Number.parseInt(savedMaxMessages, 10)
-      // A corrupt value (NaN) must not corrupt the message cap
-      setMaxMessages(Number.isFinite(parsed) ? parsed : DEFAULT_MAX_MESSAGES)
+      // A corrupt value (NaN) must not corrupt the message cap; clamp to the legacy window
+      setMaxMessages(Number.isFinite(parsed) ? Math.min(MAX_PREVIOUS_MESSAGES, Math.max(1, parsed)) : DEFAULT_MAX_MESSAGES)
     }
     if (savedNotes) {
       try {
@@ -269,6 +287,21 @@ export default function Home() {
       }
     }
     setCampaignCheckpoints(loadCheckpoints())
+    // Context compaction state (rolling summary + coverage boundary). Corrupt or absent
+    // values fall back to the defaults — a summary without a valid boundary is unusable,
+    // so both are restored together or not at all.
+    if (savedCompactionSettings) {
+      try {
+        setCompactionSettings(sanitizeCompactionSettings(JSON.parse(savedCompactionSettings)))
+      } catch (error) {
+        console.error("Failed to parse compaction settings, using defaults:", error)
+      }
+    }
+    const savedCovers = Number.parseInt(savedSummaryCovers ?? "", 10)
+    if (savedConversationSummary && Number.isFinite(savedCovers)) {
+      setConversationSummary(savedConversationSummary)
+      setSummaryCoversCount(Math.max(0, savedCovers))
+    }
     // Baseline measurement for the storage banner (reads current on-disk values)
     setStorageBytes(measureStoredBytes(APP_STORAGE_KEYS))
     hasLoadedRef.current = true
@@ -312,7 +345,10 @@ export default function Home() {
       serializedBytes(systemPrompt) +
       serializedBytes(maxMessagesValue) +
       serializedBytes(notesContextValue) +
-      serializedBytes(lootJson)
+      serializedBytes(lootJson) +
+      serializedBytes(JSON.stringify(compactionSettings)) +
+      serializedBytes(conversationSummary ?? "") +
+      serializedBytes(summaryCoversCount.toString())
 
     // Trim target #1: oldest chat first — only when the projected total crosses the trigger
     let chat = chatMessages
@@ -320,6 +356,10 @@ export default function Home() {
     const fullChatJson = JSON.stringify(chat)
     if (baseBytes + serializedBytes(fullChatJson) > STORAGE_TRIGGER_BYTES && chat.length > 0) {
       chatDrop = planChatTrim({ baseBytes, messageBytes: chat.map((m) => serializedBytes(JSON.stringify(m))) })
+      // Content guard: with a rolling summary in place, prune ONLY inside the covered
+      // prefix — anything beyond it was never summarized, and dropping it would lose
+      // story content (the existing warning + export advice covers the rest).
+      if (conversationSummary) chatDrop = Math.min(chatDrop, summaryCoversCount)
       if (chatDrop > 0) chat = chatMessages.slice(chatDrop)
     }
     const chatJson = chat === chatMessages ? fullChatJson : JSON.stringify(chat)
@@ -332,6 +372,9 @@ export default function Home() {
         for (const dropped of chatMessages.slice(0, chatDrop)) {
           if (dropped.image?.id) void deleteImage(dropped.image.id)
         }
+        // The pruned messages sit inside the summary's covered prefix — shift the
+        // boundary back by exactly what fell out (the summary already carries them).
+        if (conversationSummary) setSummaryCoversCount((prev) => Math.max(0, prev - chatDrop))
       }
       if (checkpointDrop > 0) setCampaignCheckpoints(checkpoints)
       const parts: string[] = []
@@ -359,6 +402,9 @@ export default function Home() {
       localStorage.setItem(NOTES_CONTEXT_KEY, notesContextValue)
       localStorage.setItem(CHECKPOINTS_STORAGE_KEY, checkpointsJson)
       localStorage.setItem(LOOT_STORAGE_KEY, lootJson)
+      localStorage.setItem(COMPACTION_SETTINGS_KEY, JSON.stringify(compactionSettings))
+      localStorage.setItem(CONVERSATION_SUMMARY_KEY, conversationSummary ?? "")
+      localStorage.setItem(SUMMARY_COVERS_KEY, summaryCoversCount.toString())
       setStorageBytes(totalBytes)
       return { ok: true, totalBytes }
     } catch (error) {
@@ -395,7 +441,7 @@ export default function Home() {
       persistStateRef.current()
     }, AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [character, chatMessages, apiUrl, apiKey, model, imageApiUrl, imageApiKey, imageModel, imageRate, imageSize, systemPrompt, maxMessages, campaignNotes, notesInContext, loot])
+  }, [character, chatMessages, apiUrl, apiKey, model, imageApiUrl, imageApiKey, imageModel, imageRate, imageSize, systemPrompt, maxMessages, campaignNotes, notesInContext, loot, compactionSettings, conversationSummary, summaryCoversCount])
 
   // If the tab hides while a save is pending, flush it immediately — the page is still
   // alive here, so this is reliable (a save inside a beforeunload handler is not).
@@ -455,6 +501,32 @@ export default function Home() {
             const importedNotes =
               data.campaignNotes !== undefined ? sanitizeCampaignNotes(data.campaignNotes) : campaignNotes
 
+            // Compaction state (rolling summary + coverage boundary). The summary is only
+            // valid against the chat IT summarized, so on an import it replaces the local
+            // state — applied together with its boundary, clamped to the imported chat, and
+            // cleared when the file has none (a summary over a different conversation would
+            // be worse than none). Settings are independent and apply when present.
+            const importedSummary =
+              typeof data.conversationSummary === "string" && data.conversationSummary.trim().length > 0
+                ? data.conversationSummary
+                : null
+            const importedCoversRaw = Number(data.summaryCoversCount)
+            const importedCovers =
+              Number.isFinite(importedCoversRaw) && importedCoversRaw >= 0 ? Math.floor(importedCoversRaw) : 0
+            const chatLengthAfterImport = importedChatArray ? (importedChatArray as ChatMessage[]).length : chatMessages.length
+            let coversApplied =
+              importedSummary !== null ? Math.min(importedCovers, chatLengthAfterImport) : 0
+            if (data.compactionSettings !== undefined) {
+              setCompactionSettings(sanitizeCompactionSettings(data.compactionSettings))
+            }
+            if (importedSummary !== null) {
+              setConversationSummary(importedSummary)
+              setSummaryCoversCount(coversApplied)
+            } else if (importedChatArray !== null) {
+              setConversationSummary(null)
+              setSummaryCoversCount(0)
+            }
+
             const importBaseBytes =
               serializedBytes(JSON.stringify(data.character ?? character)) +
               serializedBytes(JSON.stringify(importedNotes)) +
@@ -469,7 +541,12 @@ export default function Home() {
               serializedBytes(String(data.imageSize ?? imageSize)) +
               serializedBytes(String(data.systemPrompt ?? systemPrompt)) +
               serializedBytes(String(data.maxMessages ?? maxMessages)) +
-              serializedBytes(String(data.notesInContext ?? notesInContext))
+              serializedBytes(String(data.notesInContext ?? notesInContext)) +
+              (importedSummary !== null
+                ? serializedBytes(JSON.stringify(sanitizeCompactionSettings(data.compactionSettings))) +
+                  serializedBytes(importedSummary) +
+                  serializedBytes(String(coversApplied))
+                : 0)
 
             let chatToApply = importedChatArray
             if (
@@ -477,12 +554,19 @@ export default function Home() {
               importBaseBytes + serializedBytes(JSON.stringify(importedChatArray)) > STORAGE_TRIGGER_BYTES &&
               importedChatArray.length > 0
             ) {
-              const drop = planChatTrim({
+              let drop = planChatTrim({
                 baseBytes: importBaseBytes,
                 messageBytes: importedChatArray.map((m) => serializedBytes(JSON.stringify(m))),
               })
+              // Content guard: with an imported summary in place, prune ONLY inside its
+              // covered prefix — the tail beyond it was never summarized, and dropping it
+              // would silently lose story content.
+              if (importedSummary !== null) drop = Math.min(drop, coversApplied)
               if (drop > 0) {
                 chatToApply = importedChatArray.slice(drop)
+                // The pruned head sits inside the summary's covered prefix — shift the
+                // boundary back by exactly what fell out (the summary already carries them).
+                coversApplied = Math.max(0, coversApplied - drop)
                 // Free any IndexedDB blobs for the dropped (un-imported) messages — usually a
                 // no-op (their images came from the source device) but keeps IDB consistent on
                 // a same-device export→import round trip.
@@ -510,7 +594,7 @@ export default function Home() {
             // Same migration as the localStorage load: old export files may carry an
             // untouched copy of the built-in prompt.
             if (data.systemPrompt !== undefined) setSystemPrompt(migrateStoredSystemPrompt(data.systemPrompt))
-            if (data.maxMessages) setMaxMessages(data.maxMessages)
+            if (data.maxMessages) setMaxMessages(Math.min(MAX_PREVIOUS_MESSAGES, Math.max(1, Number(data.maxMessages) || DEFAULT_MAX_MESSAGES)))
             // Files exported before checkpoints existed have no such key; leave current checkpoints alone then.
             // sanitizeCheckpoints enforces the 50-checkpoint store cap on imported lists.
             if (data.campaignCheckpoints !== undefined) setCampaignCheckpoints(importedCheckpoints)
@@ -549,6 +633,9 @@ export default function Home() {
       imageSize,
       systemPrompt,
       maxMessages,
+      compactionSettings,
+      conversationSummary,
+      summaryCoversCount,
       campaignCheckpoints,
       campaignNotes,
       notesInContext,
@@ -787,6 +874,12 @@ export default function Home() {
             setCampaignCheckpoints={setCampaignCheckpoints}
             maxMessages={maxMessages}
             setMaxMessages={setMaxMessages}
+            compactionSettings={compactionSettings}
+            setCompactionSettings={setCompactionSettings}
+            conversationSummary={conversationSummary}
+            setConversationSummary={setConversationSummary}
+            summaryCoversCount={summaryCoversCount}
+            setSummaryCoversCount={setSummaryCoversCount}
             onLootCapture={handleLootCapture}
             character={character} // Pass character data to ChatInterface
           />

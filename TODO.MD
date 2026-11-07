@@ -32,3 +32,16 @@
 11. ~~All the chat bubble delete icons should show a red outline/stroke (wireframe) on hover — visual cue that delete is the destructive action.~~ — done in 827a0eb (applies to all delete icons: chat + character tabs; was implemented but never struck)
 
 12. ~~CI/CD pipeline: deployment to the webserver (CI already runs the gates — this adds the deploy step; target server + method + triggers TBD).~~ — Design A (hosted-runner + Cloudflare Access SSH + 3 forced-command keys) done in 106adf4…d36401e; Deploy + Rollback both proven end-to-end (see FIXES.MD § 2026-11-03 close-out)
+
+13. Markdown in all of the text boxes.
+
+14. Stat blocks:
+ - Speed
+ - Spell Attack
+ - Spell Save
+
+15. A dice rolling mechanism.
+
+16. Drag and reorder panels in inventory, equipment, proficiencies, traits and feats. Drag and redorder panels in spells *within their class*.
+
+16. A tactical map - just an plane with grids/grid coordinates showing dots for where everyone is so that player and DM can get a sense of positioning and use ranged tools better. DM can add obstacles and walls possibly? 
