@@ -14,14 +14,11 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   InfoIcon,
-  PencilIcon,
   SendIcon,
-  SettingsIcon,
   ShieldCheckIcon,
   SquareIcon,
-  TrashIcon,
-  RefreshCwIcon,
 } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import {
   Dialog,
   DialogClose,
@@ -278,7 +275,7 @@ const ChatMessageComponent = memo(
           <div
             role="group"
             aria-label="Message actions"
-            className="flex shrink-0 flex-col gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            className="flex shrink-0 flex-col items-center gap-1 pt-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           >
             {/* TODO.MD #3.2: edit + resend, on user bubbles only */}
             {/* TODO.MD #3.4: per-turn stats (tokens in/out, context, speed, duration)
@@ -373,37 +370,37 @@ const ChatMessageComponent = memo(
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 hover:bg-muted"
+                className="h-8 w-8"
                 onClick={() => onEdit(message.id)}
                 disabled={inFlight}
                 title="Edit and resend chat"
                 aria-label="Edit message"
               >
-                <PencilIcon className="h-3 w-3" />
+                <SpriteIcon name="scroll" s={0.29} />
               </Button>
             )}
             {!isUser && onRegenerate && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 hover:bg-muted"
+                className="h-8 w-8"
                 onClick={() => onRegenerate(message.id)}
                 disabled={isRegenerating || inFlight}
                 title="Regenerate response"
                 aria-label="Regenerate response"
               >
-                <RefreshCwIcon className={`h-3 w-3 ${isRegenerating ? "animate-spin" : ""}`} />
+                <SpriteIcon name="retry-cw" s={0.32} className={isRegenerating ? "animate-spin" : ""} />
               </Button>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
+              className="h-8 w-8"
               onClick={() => onDelete(message.id)}
               title="Delete message"
               aria-label="Delete message"
             >
-              <TrashIcon className="h-3 w-3" />
+              <SpriteIcon name="action-trash" s={0.19} />
             </Button>
           </div>
 
@@ -662,6 +659,7 @@ export default function ChatInterface({
   const [editDraft, setEditDraft] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const chatContentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -763,26 +761,38 @@ export default function ChatInterface({
     setImageFootprint(result.ok && result.value ? result.value : null)
   }, [])
 
-  // Calculate and set the chat height based on window size
+  // Calculate and set the chat height so the card's bottom edge lands just inside
+  // the viewport (the card is fixed-height; its message list scrolls internally,
+  // and the composer footer sits inside the card's height).
+  //
+  // The card's ACTUAL top is measured at computation time rather than subtracting
+  // fixed header/padding constants: anything that changes the space above the card
+  // (the display font loading in and reflowing the app/DM-Chat headers, wrapped
+  // headers, taller controls) is captured automatically. The old constant-based
+  // math left only ~8px of total slack, so a late font shift pushed the fixed
+  // card below the viewport bottom edge and clipped the composer (owner report,
+  // v1.2.0). We re-run on mount, window resize, AND once web fonts settle.
   const updateChatHeight = useCallback(() => {
-    if (containerRef.current) {
-      const windowHeight = window.innerHeight
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const containerTop = containerRect.top
-      const headerHeight = 40 // Approximate height of the chat header
-      const padding = 24 // Some padding
-
-      // The composer footer is auto-height (T2.1 multiline input) and sits INSIDE the
-      // card's fixed height, so it no longer needs its own subtraction here.
-      const newHeight = windowHeight - containerTop - headerHeight - padding
-      setChatHeight(Math.max(400, newHeight)) // Minimum height of 400px
-    }
+    const card = cardRef.current
+    if (!card) return
+    const cardTop = card.getBoundingClientRect().top
+    const bottomGap = 12 // breathing room below the card's bottom edge
+    const newHeight = window.innerHeight - cardTop - bottomGap
+    // Floor LOW enough that short windows shrink the card to fit instead of
+    // silently overflowing the viewport bottom (the old 400px floor did that).
+    setChatHeight(Math.max(240, newHeight))
   }, [])
 
-  // Update height on mount and window resize
+  // Update height on mount, window resize, and after web fonts settle (the
+  // display face arrives after first paint and can reflow the header heights
+  // the measurement above depends on).
   useEffect(() => {
     updateChatHeight()
     window.addEventListener("resize", updateChatHeight)
+    const fonts = document.fonts
+    if (fonts?.ready) {
+      fonts.ready.then(() => updateChatHeight()).catch(() => {})
+    }
     return () => window.removeEventListener("resize", updateChatHeight)
   }, [updateChatHeight])
 
@@ -1759,14 +1769,13 @@ export default function ChatInterface({
       <h2 className="text-lg font-bold">DM Chat</h2>
       <div className="flex gap-2">
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           onClick={() => setIsAlertOpen(true)}
           disabled={messages.length === 0}
-          className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
           title="Clear chat history"
         >
-          <TrashIcon className="h-4 w-4" />
+          <SpriteIcon name="action-trash" s={0.22} />
         </Button>
         <Dialog
           onOpenChange={(open) => {
@@ -1774,11 +1783,18 @@ export default function ChatInterface({
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" title="Chat settings">
-              <SettingsIcon className="h-4 w-4" />
+            <Button variant="ghost" size="icon" title="Chat settings">
+              <SpriteIcon name="active-chat" s={0.32} />
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          {/* max-h/overflow go through --dialog-max-h (read by DialogContent's
+              inner scroll box) — NOT as max-h/overflow on the dialog root,
+              which would make the root a scroll container and clip/scroll the
+              forged-plate corners (see components/ui/dialog.tsx). */}
+          <DialogContent
+            className="sm:max-w-2xl"
+            style={{ "--dialog-max-h": "85vh" } as React.CSSProperties}
+          >
             <DialogHeader>
               <DialogTitle>Chat Settings</DialogTitle>
               <DialogDescription>Configure your AI chat settings here.</DialogDescription>
@@ -2055,7 +2071,7 @@ export default function ChatInterface({
       </div>
     </div>
 
-    <Card className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
+    <Card ref={cardRef} className="flex flex-col w-full" style={{ height: `${chatHeight}px` }}>
       <CardContent
         className="flex-1 min-h-0 overflow-y-auto p-4"
         ref={chatContentRef}

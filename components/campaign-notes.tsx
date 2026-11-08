@@ -60,7 +60,7 @@ export default function CampaignNotesComponent({ notes, onUpdate, inContext, onT
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Label htmlFor="notes-in-context" className="text-xs cursor-pointer">
-              Share with AI
+              Share with DM
             </Label>
             <Switch id="notes-in-context" checked={inContext} onCheckedChange={onToggleContext} />
           </div>

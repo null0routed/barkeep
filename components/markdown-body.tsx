@@ -1,6 +1,7 @@
 "use client"
 
-import { memo } from "react"
+import { memo, Children } from "react"
+import type React from "react"
 import ReactMarkdown from "react-markdown"
 import { cn } from "@/lib/utils"
 
@@ -14,27 +15,41 @@ import { cn } from "@/lib/utils"
  * dominate the entry, and lets the text adopt the row's existing color context.
  */
 
+// react-markdown ≥9 dropped the `inline` prop, so the old `!inline` branch could
+// no longer tell inline chips from block code — with the prop gone, EVERY code
+// element fell into the block branch and inline code rendered as a full pre
+// block. The DOM structure is the reliable signal instead: block code is
+// always `pre > code`. So the block chrome lives on `pre` (below), `code`
+// stays a bare chip, and the visual split is done in globals.css
+// (`.prose code` vs `.prose pre code`) — an ancestor is the one thing a CSS
+// selector can see. The language class hangs off the child <code>, so the
+// badge pulls it from the pre's single child element.
+function codeBlockLanguage(children: React.ReactNode): string | null {
+  if (Children.count(children) !== 1) return null
+  const cls = (Children.only(children) as { props?: { className?: unknown } })?.props?.className
+  if (typeof cls !== "string") return null
+  const match = /language-(\w+)/.exec(cls)
+  return match ? match[1] : null
+}
+
 // Memoized markdown components — the chat (non-compact) variant
 const MarkdownComponents = {
-  code: memo(({ node, inline, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || "")
-    return !inline ? (
+  code: memo(({ node, className, children, ...props }: any) => (
+    <code {...props}>{children}</code>
+  )),
+  pre: memo(({ node, children, ...props }: any) => {
+    const language = codeBlockLanguage(children)
+    return (
       <div className="relative">
-        <pre className="rounded-md bg-muted p-4 overflow-x-auto">
-          <code className={className} {...props}>
-            {children}
-          </code>
+        <pre className="rounded-md bg-muted p-4 overflow-x-auto" {...props}>
+          {children}
         </pre>
-        {match && (
+        {language && (
           <div className="absolute top-2 right-2 text-xs text-muted-foreground px-2 py-1 rounded bg-background/80">
-            {match[1]}
+            {language}
           </div>
         )}
       </div>
-    ) : (
-      <code className="bg-muted px-1 py-0.5 rounded text-sm" {...props}>
-        {children}
-      </code>
     )
   }),
   table: memo(({ node, ...props }: any) => (
@@ -67,25 +82,22 @@ const MarkdownComponents = {
 
 // Memoized markdown components — the compact variant for the tight character-tab rows
 const CompactMarkdownComponents = {
-  code: memo(({ node, inline, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || "")
-    return !inline ? (
+  code: memo(({ node, className, children, ...props }: any) => (
+    <code {...props}>{children}</code>
+  )),
+  pre: memo(({ node, children, ...props }: any) => {
+    const language = codeBlockLanguage(children)
+    return (
       <div className="relative">
-        <pre className="rounded-md bg-muted p-3 overflow-x-auto text-xs">
-          <code className={className} {...props}>
-            {children}
-          </code>
+        <pre className="rounded-md bg-muted p-3 overflow-x-auto text-xs" {...props}>
+          {children}
         </pre>
-        {match && (
+        {language && (
           <div className="absolute top-1.5 right-1.5 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-background/80">
-            {match[1]}
+            {language}
           </div>
         )}
       </div>
-    ) : (
-      <code className="bg-muted px-1 py-0.5 rounded text-xs" {...props}>
-        {children}
-      </code>
     )
   }),
   table: memo(({ node, ...props }: any) => (
@@ -116,6 +128,7 @@ const CompactMarkdownComponents = {
 
 // React DevTools names for the memoized components (same pattern as markdown-renderer.tsx)
 MarkdownComponents.code.displayName = "MarkdownCode"
+MarkdownComponents.pre.displayName = "MarkdownPre"
 MarkdownComponents.table.displayName = "MarkdownTable"
 MarkdownComponents.thead.displayName = "MarkdownThead"
 MarkdownComponents.th.displayName = "MarkdownTh"
@@ -130,6 +143,7 @@ MarkdownComponents.li.displayName = "MarkdownLi"
 MarkdownComponents.blockquote.displayName = "MarkdownBlockquote"
 
 CompactMarkdownComponents.code.displayName = "CompactMarkdownCode"
+CompactMarkdownComponents.pre.displayName = "CompactMarkdownPre"
 CompactMarkdownComponents.table.displayName = "CompactMarkdownTable"
 CompactMarkdownComponents.thead.displayName = "CompactMarkdownThead"
 CompactMarkdownComponents.th.displayName = "CompactMarkdownTh"

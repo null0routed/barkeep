@@ -852,7 +852,16 @@ export default function Home() {
         className="flex flex-col lg:flex-row gap-4 lg:flex-1 lg:overflow-hidden"
         style={{ "--split": `${panelRatio}%` } as React.CSSProperties}
       >
-        <div className="overflow-y-auto min-w-0 order-2 lg:order-1 lg:[flex:1_1_var(--split)]">
+        {/* lg:pr-3 = a right-side gutter for this column's own scrollbar
+            (8px thumb, globals.css ::-webkit-scrollbar). The thumb is a
+            PADDING-BOX construct — it sits within the outer 8px of the
+            padding box, overlaying it in overlay mode (web.dev/learn/css/overflow),
+            so the gutter must exceed the thumb: 12px keeps ≥4px of clear
+            space between the thumb and the cards' right border/corner in BOTH
+            overlay and classic (space-taking) scrollbar modes. Gutter only at
+            lg+, where the column scrolls INTERNALLY (below lg the page
+            scrolls and main's padding clears the viewport scrollbar). */}
+        <div className="overflow-y-auto min-w-0 order-2 lg:order-1 lg:pr-3 lg:[flex:1_1_var(--split)]">
           <CharacterSheet
             character={character}
             setCharacter={setCharacter}

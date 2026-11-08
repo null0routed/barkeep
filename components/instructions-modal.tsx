@@ -1,5 +1,7 @@
 "use client"
+import type React from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import SpriteIcon from "@/components/sprite-icon"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
@@ -15,7 +17,12 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+      {/* scroll sizing via --dialog-max-h, never max-h/overflow on the root —
+          see components/ui/dialog.tsx (forged-plate corner safety). */}
+      <DialogContent
+        className="max-w-3xl"
+        style={{ "--dialog-max-h": "80vh" } as React.CSSProperties}
+      >
         <DialogHeader>
           <DialogTitle className="text-xl">Welcome to Barkeep - D&D Character Sheet & AI DM</DialogTitle>
           <DialogDescription>
@@ -38,7 +45,7 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
                 <li>
-                  Click the <span className="font-mono bg-muted px-1 rounded">⚙️</span> icon in the DM Chat section
+                  Click the <SpriteIcon name="active-chat" s={0.32} /> icon in the DM Chat section
                 </li>
                 <li>Enter your OpenAI API key or the API key for your preferred AI service</li>
                 <li>Verify the API URL is correct (default is OpenAI’s endpoint)</li>

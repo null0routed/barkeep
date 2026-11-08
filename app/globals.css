@@ -220,14 +220,25 @@ body {
  * Markdown (typography) — the app's v3 config customized how inline code and
  * code blocks render. Re-applied here as plain rules with higher specificity
  * than the plugin's `:where()`-wrapped selectors, so they reliably win the
- * cascade (bg muted, normal code weight, no auto-added quotes, padded blocks).
+ * cascade (normal code weight, no auto-added quotes, padded blocks).
+ *
+ * Code colors (TODO.MD #22): the chip and block text must stay readable on
+ * whatever surface carries the markdown — the DM bubble (bg-muted), the
+ * player bubble (bg-user-bubble), or a character row (bg-card) — in BOTH
+ * themes. The old bg-muted chip blended into the DM bubble in light mode, and
+ * the plugin's pre-code color (near-white) left block text the same color as
+ * its own 91%-light box there. The chip now uses bg-background + an explicit
+ * border + --foreground text, and block text is pinned to --foreground (dark
+ * on the light muted block, warm ivory on the dark one).
  */
 .prose {
   max-width: 100%;
 }
 .prose code {
-  background-color: hsl(var(--muted));
-  padding: 0.2em 0.4em;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 0.15em 0.35em;
+  border: 1px solid hsl(var(--border));
   border-radius: 0;
   font-weight: 400;
 }
@@ -242,31 +253,96 @@ body {
 }
 .prose pre code {
   background-color: transparent;
+  border: 0;
   padding: 0;
+  color: hsl(var(--foreground));
 }
 
-/* Tavern theme (v1.2.0), variant C — "forged plate": one FILLED triangle at
-   each corner, vertex flush with the card's 2px border (inset: 0), like an
-   iron corner fitting on a timber panel. Solid primary amber — the same
-   "forged metal" accent as the active tab. Each triangle is an exact 45°
-   half of a square box (hard-stop linear-gradient), sized half of the
-   original 16px bracket arms. Applied to the Card and Dialog surfaces
-   (see components/ui/card.tsx, components/ui/dialog.tsx). */
-.corner-plate::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  --corner-plate: 8px;
-  background:
-    linear-gradient(to bottom right, hsl(var(--primary)) 50%, transparent 50%) top left /
-      var(--corner-plate) var(--corner-plate) no-repeat,
-    linear-gradient(to bottom left, hsl(var(--primary)) 50%, transparent 50%) top right /
-      var(--corner-plate) var(--corner-plate) no-repeat,
-    linear-gradient(to top right, hsl(var(--primary)) 50%, transparent 50%) bottom left /
-      var(--corner-plate) var(--corner-plate) no-repeat,
-    linear-gradient(to top left, hsl(var(--primary)) 50%, transparent 50%) bottom right /
-      var(--corner-plate) var(--corner-plate) no-repeat;
+/* Tavern theme (v1.2.0): forged-plate corners — a pixel corner sprite from
+   the owner's sheet (sprites/sprites_v2.png → public/sprites.png, class
+   .spr-corner-thin-tl) rotated into all four corners. Same sprite on every
+   side, ROTATED not mirrored (owner direction), so no -tr variant is used.
+   The sprite cell is square (131×131 native), so each rotation about its
+   center keeps the art flush in its corner; the .spr* geometry comes from
+   public/sprites.css, the spans from components/corner-sprites.tsx
+   (Card + DialogContent, the .corner-plate surfaces).
+   --s: 131px native → ~26px at 0.2. SIZED TO THE SMALLEST SURFACE: the collapsed
+   section headers are ~56px tall, so a corner must stay under 28px or the two
+   corners on a side overlap each other; 26px is the largest that fits everywhere
+   (dialog is ~456px, so 26px reads as a small forged fitting there — consistent
+   across surfaces). The single place to tune corner size. */
+.corner-plate .spr-corner {
+  --s: 0.2;
+}
+.corner-plate .spr-corner-tr {
+  transform: rotate(90deg);
+}
+.corner-plate .spr-corner-br {
+  transform: rotate(180deg);
+}
+.corner-plate .spr-corner-bl {
+  transform: rotate(270deg);
+}
+
+/* Seat each corner ASTRIDE the card's 2px border, then 1px FURTHER OUT (owner
+   direction 2: the border should feed into the sprite, and the corner should
+   sit an additional 1px beyond the border): shift outward by border width + 1
+   so the border line runs under the art and the sprite overhangs the card's
+   outer edge by 1px. The spans are descendants, so they paint OVER the border
+   (no z-index needed). Any enclosing scroller/box must clear that extra
+   pixel — the sheet column (overflow-y-auto) keeps ≥12px gutters (main p-3 /
+   lg:pr-3) and the dialog's inner padding (p-6) far exceeds the 1px overhang. */
+.corner-plate .spr-corner-tl {
+  top: -3px;
+  left: -3px;
+}
+.corner-plate .spr-corner-tr {
+  top: -3px;
+  right: -3px;
+}
+.corner-plate .spr-corner-bl {
+  bottom: -3px;
+  left: -3px;
+}
+.corner-plate .spr-corner-br {
+  bottom: -3px;
+  right: -3px;
+}
+
+/* Sprite-icon halo (v1.2.0): the small icon sprites carry a baked-in dark tile
+   background that blends into either theme's backdrop at 12–32px. A tight warm
+   halo around the tile silhouette makes the icon's extent read clearly. Uses
+   the sheet's own --glow token (amber default from public/sprites.css); the
+   3px blur is sized for our small icons (the sheet's .spr-glow is 6px — too
+   wide). Applied via the `glow` prop on components/sprite-icon.tsx (default
+   on). Alpha tuned down ~30% (0.55 → 0.38) per owner: presence without a halo.
+   HOVER (owner direction): the resting halo lifts into a brighter, softer
+   amber that diffuses farther — a two-stage drop-shadow (tight + long) for
+   the diffuse falloff; trash gets the same treatment in RED so destructive
+   actions read at a glance. Scoped to the host button so it only lifts on
+   interaction. */
+.spr-glow-sm {
+  filter: drop-shadow(0 0 3px rgb(var(--glow, 255 170 60) / 0.38));
+  transition: filter 160ms ease;
+}
+button:hover > .spr-glow-sm,
+button:focus-visible > .spr-glow-sm {
+  filter: drop-shadow(0 0 2px rgb(255 199 148 / 0.55)) drop-shadow(0 0 9px rgb(255 177 95 / 0.5));
+}
+button:hover > .spr-glow-sm.spr-action-trash,
+button:focus-visible > .spr-glow-sm.spr-action-trash {
+  filter: drop-shadow(0 0 2px rgb(255 158 132 / 0.55)) drop-shadow(0 0 9px rgb(239 86 64 / 0.5));
+}
+
+/* owner direction: on hover the GLOW is the only cue — no background "box".
+   The ghost variant's hover:bg-muted (and any per-button hover tint) would
+   otherwise paint a rounded box behind the icon. Scoped to buttons whose
+   direct child is a sprite icon; `:has()` lifts specificity to (0,3,1),
+   which beats every Tailwind hover:bg-* utility (0,2,0). The button keeps
+   its focus-visible RING (accessibility) — only the painted box is removed. */
+button:has(> .spr-glow-sm):hover,
+button:has(> .spr-glow-sm):focus-visible {
+  background-color: transparent;
 }
 
 /* Tavern theme (v1.2.0): candlelight in the room behind the panels — a faint

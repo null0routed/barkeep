@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
+import { CheckIcon, PlusIcon, XIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData, InventoryItem, ItemRarity } from "@/lib/types"
 import { getRarityColor } from "./helpers"
 import TabFilter from "../tab-filter"
@@ -227,12 +228,12 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col gap-1 sm:flex-row">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                       <Button size="icon" variant="ghost" aria-label="Edit item" onClick={() => startEditingInventory(index)}>
-                        <EditIcon className="h-4 w-4" />
+                        <SpriteIcon name="scroll" s={0.32} />
                       </Button>
-                      <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove item" onClick={() => removeInventoryItem(index)}>
-                        <Trash2Icon className="h-4 w-4" />
+                      <Button size="icon" variant="ghost" aria-label="Remove item" onClick={() => removeInventoryItem(index)}>
+                        <SpriteIcon name="action-trash" s={0.22} />
                       </Button>
                     </div>
                   </div>

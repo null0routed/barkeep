@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import type React from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -62,7 +63,13 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+      {/* scroll sizing via --dialog-max-h, never max-h/overflow on the root —
+          see components/ui/dialog.tsx (forged-plate corner safety). 90vh is
+          the default; kept explicit for intent. */}
+      <DialogContent
+        className="sm:max-w-[550px]"
+        style={{ "--dialog-max-h": "90vh" } as React.CSSProperties}
+      >
         <DialogHeader>
           <DialogTitle>{editingSpell ? "Edit Spell" : "Add Spell"}</DialogTitle>
         </DialogHeader>

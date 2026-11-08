@@ -1,11 +1,12 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import CornerSprites from "@/components/corner-sprites"
 
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
@@ -13,7 +14,13 @@ const Card = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >
+    {/* forged-plate corners (one rotated sprite — see corner-sprites.tsx).
+        `children` must be destructured AND rendered explicitly: explicit JSX
+        children shadow the copy that would otherwise flow through {...props}. */}
+    <CornerSprites />
+    {children}
+  </div>
 ))
 Card.displayName = "Card"
 

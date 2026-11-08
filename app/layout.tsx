@@ -42,6 +42,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} ${inter.variable} ${cinzel.variable}`}>
+        {/* Pixel-art sprite sheet (sprites/sprites_v2.* → public/sprites.{css,png}).
+            A standalone stylesheet — NOT merged into globals.css — so the owner's
+            pack.py output stays byte-for-byte and re-copies cleanly on each sheet
+            regeneration; url("sprites.png") in the CSS resolves relative to
+            public/, where both files live. Manual <link> is intentional (public
+            asset, no bundler import) — the no-css-tags rule exists to stop
+            unprocessed bundled CSS, which is not this case. */}
+        {/* eslint-disable-next-line @next/next/no-css-tags */}
+        <link rel="stylesheet" href="/sprites.css" />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {children}
           <Toaster richColors position="top-center" />

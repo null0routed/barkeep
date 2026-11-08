@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { EditIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { PlusIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData, Spell } from "@/lib/types"
 import { formatSpellLevel, getSpellSchoolColor } from "./helpers"
 import TabFilter from "../tab-filter"
@@ -157,9 +158,13 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                             onGripDragStart={(event) => startDrag(event, globalIndex)}
                             onGripDragEnd={clearDrag}
                           />
-                          <div className="min-w-0 flex-1">
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2">
+                          {/* owner direction (v1.2.0): the action icons were STILL stuck
+                              at the top — they lived inside the title row. Hoisted them
+                              into the OUTER row so they center against the whole card
+                              (name + stats + description), matching inventory/equipment. */}
+                          <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-bold">{spell.name}</h4>
                             <Badge className={getSpellSchoolColor(spell.school)}>
                               {spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
@@ -176,17 +181,8 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                                 </Label>
                               </div>
                             )}
-                          </div>
-                          <div className="flex flex-col gap-1 sm:flex-row">
-                            <Button size="icon" variant="ghost" aria-label="Edit spell" onClick={() => startEditingSpell(spell)}>
-                              <EditIcon className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove spell" onClick={() => removeSpell(spell.id)}>
-                              <Trash2Icon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-sm">
+                              </div>
+                              <div className="mt-2 text-sm">
                           <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
                             <div>
                               <span className="font-medium">Casting Time:</span> {spell.castingTime || "1 action"}
@@ -209,10 +205,19 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                               <span className="font-medium">Materials:</span> {spell.materialComponents}
                             </div>
                           )}
-                          <div>
-                            <MarkdownBody content={spell.description} compact />
-                          </div>
-                        </div>
+                            <div>
+                              <MarkdownBody content={spell.description} compact />
+                            </div>
+                            </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-center gap-1">
+                              <Button size="icon" variant="ghost" aria-label="Edit spell" onClick={() => startEditingSpell(spell)}>
+                                <SpriteIcon name="scroll" s={0.32} />
+                              </Button>
+                              <Button size="icon" variant="ghost" aria-label="Remove spell" onClick={() => removeSpell(spell.id)}>
+                                <SpriteIcon name="action-trash" s={0.22} />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>

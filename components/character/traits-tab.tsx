@@ -8,7 +8,8 @@ import MarkdownBody from "@/components/markdown-body"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
+import { CheckIcon, PlusIcon, XIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData, Trait } from "@/lib/types"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
@@ -171,23 +172,26 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
                     </div>
                   </div>
                 ) : (
-                  <div className="min-w-0 flex-1">
-                    <div className="flex justify-between items-start">
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    {/* owner direction (v1.2.0): the action icons sat in the title row,
+                        so they rendered STUCK at the top of the card. Hoisted into the
+                        outer row: they center over the whole card, stack centered. */}
+                    <div className="min-w-0">
                       <div>
                         <h3 className="font-bold">{trait.name}</h3>
                         <div className="text-sm text-muted-foreground">Source: {trait.source || "Unknown"}</div>
                       </div>
-                      <div className="flex flex-col gap-1 sm:flex-row">
-                        <Button size="icon" variant="ghost" aria-label="Edit trait" onClick={() => startEditingTrait(index)}>
-                          <EditIcon className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove trait" onClick={() => removeTrait(trait.id)}>
-                          <Trash2Icon className="h-4 w-4" />
-                        </Button>
+                      <div className="mt-2">
+                        <MarkdownBody content={trait.description} compact />
                       </div>
                     </div>
-                    <div className="mt-2">
-                      <MarkdownBody content={trait.description} compact />
+                    <div className="flex shrink-0 flex-col items-center gap-1">
+                      <Button size="icon" variant="ghost" aria-label="Edit trait" onClick={() => startEditingTrait(index)}>
+                        <SpriteIcon name="scroll" s={0.32} />
+                      </Button>
+                      <Button size="icon" variant="ghost" aria-label="Remove trait" onClick={() => removeTrait(trait.id)}>
+                        <SpriteIcon name="action-trash" s={0.22} />
+                      </Button>
                     </div>
                   </div>
                 )}

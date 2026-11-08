@@ -5,7 +5,8 @@ import type React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { PlusIcon, Trash2Icon } from "lucide-react"
+import { PlusIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData } from "@/lib/types"
 import ReorderControls from "./reorder-controls"
 import { useListDrag } from "./use-list-drag"
@@ -94,7 +95,7 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
                       <div className="flex shrink-0 items-center gap-1">
                         <Badge variant="outline">{proficiency.type.charAt(0).toUpperCase() + proficiency.type.slice(1)}</Badge>
                         <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove proficiency" onClick={() => removeProficiency(proficiency.id)}>
-                          <Trash2Icon className="h-4 w-4" />
+                          <SpriteIcon name="action-trash" s={0.22} />
                         </Button>
                       </div>
                     </div>

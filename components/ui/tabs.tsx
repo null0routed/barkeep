@@ -14,7 +14,11 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md border bg-muted p-1 text-muted-foreground",
+      // px-1 py-0.5 (not p-1): the border eats 2px of the fixed h-10, so the
+      // 32px-tall triggers (py-1.5 + text-sm) must still fit the interior box —
+      // otherwise `overflow-x-auto` (which also forces overflow-y:auto) grows a
+      // scrollbar on the bar.
+      "inline-flex h-10 items-center justify-center rounded-md border bg-muted px-1 py-0.5 text-muted-foreground",
       className
     )}
     {...props}
