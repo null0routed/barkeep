@@ -3,7 +3,8 @@
 import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontalIcon, AlertTriangleIcon, SunIcon, MoonIcon, FileDownIcon, FileUpIcon, SaveIcon, BookOpenIcon, InfoIcon } from "lucide-react"
+import { MoreHorizontalIcon, AlertTriangleIcon, FileDownIcon, FileUpIcon, SaveIcon, BookOpenIcon, InfoIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import Image from "next/image"
 import CharacterSheet from "@/components/character-sheet"
 import ChatInterface, { DEFAULT_MAX_MESSAGES, MAX_PREVIOUS_MESSAGES } from "@/components/chat-interface"
@@ -752,6 +753,21 @@ export default function Home() {
                   <FileUpIcon className="h-4 w-4 shrink-0" aria-hidden />
                   Load from file…
                 </button>
+                {/* v1.2.0 owner direction: Export moved INTO the menu (the file-
+                    action pair with Load), freeing its button slot for the
+                    theme toggle below. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    handleExport()
+                  }}
+                >
+                  <FileDownIcon className="h-4 w-4 shrink-0" aria-hidden />
+                  Export
+                </button>
                 <button
                   type="button"
                   role="menuitem"
@@ -791,33 +807,25 @@ export default function Home() {
                   </svg>
                   GitHub
                 </a>
-                <div className="my-1 h-px bg-border" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => {
-                    setMoreMenuOpen(false)
-                    setTheme(theme === "dark" ? "light" : "dark")
-                  }}
-                >
-                  {/* The icon shows the TARGET theme (Sun → Light mode, Moon → Dark
-                      mode), which also resolves the old icon-ambiguity that motivated
-                      the text-only menu (T4.3). */}
-                  {theme === "dark" ? (
-                    <SunIcon className="h-4 w-4 shrink-0" aria-hidden />
-                  ) : (
-                    <MoonIcon className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
-                </button>
               </div>
             )}
           </div>
-          {/* Locked decision: Export stays outside the menu — the labeled data-safety CTA. */}
-          <Button size="sm" onClick={handleExport}>
-            <FileDownIcon className="h-4 w-4" />
-            Export
+          {/* v1.2.0 owner direction: the theme toggle now sits in the Export
+              button's slot (light/dark moved OUT of the menu; Export moved
+              IN). A candle takes over the Sun/Moon roles with the same
+              target-theme reading: in dark mode the candle is LIT (tap →
+              light), in light mode it's SNUFFED (tap → dark). Heights kept
+              equal despite different native cells (112px vs 130px), so the
+              button content doesn't jump on toggle. Sits beside the outline
+              "More" icon, matching its size/weight. */}
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            <SpriteIcon name={theme === "dark" ? "candle" : "candle-snuffed"} s={theme === "dark" ? 0.21 : 0.18} />
           </Button>
         </div>
       </div>

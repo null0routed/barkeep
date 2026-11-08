@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { CheckIcon, PlusIcon, XIcon } from "lucide-react"
 import SpriteIcon from "@/components/sprite-icon"
+import SpriteLabel from "./sprite-label"
 import type { CharacterData, InventoryItem, ItemRarity } from "@/lib/types"
 import { RARITY_BOTTLE } from "./helpers"
 import TabFilter from "../tab-filter"
@@ -113,7 +114,11 @@ export default function InventoryTab({ character, setCharacter, editingInventory
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      {/* v1.2.0 owner direction: the title/content gap here matched every other
+          tab (0px), but the Spells tab reads airier — its level heading fills the
+          first 31px. pt-8 (32px) closes that look on this tab; twMerge resolves
+          the base CardContent's pt-0. */}
+      <CardContent className="pt-8">
         <div className="space-y-4">
           {character.inventory.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">No items in inventory</div>
@@ -219,13 +224,13 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                         {item.name} {item.quantity > 1 && `(${item.quantity})`}
                         {/* owner direction (v1.2.0): rarity pill → the sheet's bottle
                             sprite for that rarity (RARITY_BOTTLE in helpers.ts handles
-                            the "very rare" → "bottle-very-rare" name mismatch). */}
-                        <span
-                          title={item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
-                          className="inline-flex items-center"
-                        >
-                          <SpriteIcon name={RARITY_BOTTLE[item.rarity]} s={0.19} />
-                        </span>
+                            the "very rare" → "bottle-very-rare" name mismatch). The
+                            badge now names it on click (SpriteLabel popover). */}
+                        <SpriteLabel
+                          sprite={RARITY_BOTTLE[item.rarity]}
+                          s={0.19}
+                          label={item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
+                        />
                       </div>
                       {item.description && (
                         <div className="text-sm text-muted-foreground">

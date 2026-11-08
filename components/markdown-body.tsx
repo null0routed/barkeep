@@ -165,7 +165,11 @@ interface MarkdownBodyProps {
   compact?: boolean
 }
 
-export default function MarkdownBody({ content, compact = false }: MarkdownBodyProps) {
+// v1.2.0 owner direction: memoized. Props are (content, compact) — both
+// stable for a given message/tab row — so a render triggered elsewhere
+// (e.g. the Character Name field re-rendering the chat to re-point the
+// speaker bar) skips the ReactMarkdown re-parse entirely.
+const MarkdownBody = memo(function MarkdownBody({ content, compact = false }: MarkdownBodyProps) {
   return (
     <div
       className={cn(
@@ -176,4 +180,8 @@ export default function MarkdownBody({ content, compact = false }: MarkdownBodyP
       <ReactMarkdown components={compact ? CompactMarkdownComponents : MarkdownComponents}>{content}</ReactMarkdown>
     </div>
   )
-}
+})
+
+MarkdownBody.displayName = "MarkdownBody"
+
+export default MarkdownBody

@@ -43,7 +43,8 @@ export default function ReorderControls({
         title={`Move ${noun} up`}
         onClick={onMoveUp}
       >
-        <SpriteIcon name="arrow-up" s={0.2} />
+        {/* v1.2.0: second +10% bump (owner: the rail still reads small) */}
+        <SpriteIcon name="arrow-up" s={0.22} />
       </Button>
       <span
         draggable={typeof onGripDragStart === "function"}
@@ -53,7 +54,8 @@ export default function ReorderControls({
         className="cursor-grab px-0.5 py-1 active:cursor-grabbing"
         aria-hidden="true"
       >
-        <SpriteIcon name="action-drag" s={0.11} />
+        {/* v1.2.0: second +10% bump (owner: the rail still reads small) */}
+        <SpriteIcon name="action-drag" s={0.133} />
       </span>
       <Button
         size="icon"
@@ -64,7 +66,8 @@ export default function ReorderControls({
         title={`Move ${noun} down`}
         onClick={onMoveDown}
       >
-        <SpriteIcon name="arrow-down" s={0.2} />
+        {/* v1.2.0: second +10% bump (owner: the rail still reads small) */}
+        <SpriteIcon name="arrow-down" s={0.22} />
       </Button>
     </div>
   )

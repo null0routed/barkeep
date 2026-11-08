@@ -67,6 +67,34 @@ test('inventory search matches rarity badges (TODO.MD #15)', async ({ page }) =>
   await expect(page.getByText('1 of 2')).toBeVisible()
 })
 
+// v1.2.0: rarity badges are sprite-only — the owner wants the NAME one click
+// away. SpriteLabel lifts a popover naming the rarity; Escape or an outside
+// click dismisses it (see components/character/sprite-label.tsx).
+test('rarity badge popover names the rarity; Escape and outside-click dismiss (v1.2.0)', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('dnd-character', JSON.stringify({
+      name: 'Renna',
+      inventory: [
+        { name: 'Crown of the Fox', description: 'Gilded', quantity: 1, rarity: 'legendary' },
+      ],
+    }))
+  })
+  await page.goto('/')
+  const badge = page.getByRole('button', { name: 'Show Legendary' })
+  await badge.click()
+  await expect(page.getByRole('tooltip', { name: 'Legendary' })).toBeVisible()
+
+  // Escape closes
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('tooltip', { name: 'Legendary' })).toHaveCount(0)
+
+  // Re-open, then dismiss via an outside click (the item name row)
+  await badge.click()
+  await expect(page.getByRole('tooltip', { name: 'Legendary' })).toBeVisible()
+  await page.getByText('Crown of the Fox').click()
+  await expect(page.getByRole('tooltip', { name: 'Legendary' })).toHaveCount(0)
+})
+
 test('spells search matches school (TODO.MD #15)', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('dnd-character', JSON.stringify({
@@ -274,4 +302,27 @@ test('reordered trait order survives a reload (TODO.MD #17)', async ({ page }) =
   await expect(reloaded.nth(0)).toContainText('Keen Senses')
   await expect(reloaded.nth(1)).toContainText('Fox Cunning')
   await expect(reloaded.nth(2)).toContainText('Lightfoot Stealth')
+})
+
+test('chat speaker bars: Barkeep left, live Character Name right (v1.2.0)', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('dnd-character', JSON.stringify({ name: 'Renna' }))
+    localStorage.setItem('dnd-chat', JSON.stringify([
+      { id: 'm1', role: 'user', content: 'A torchlit stair descends.' },
+      { id: 'm2', role: 'assistant', content: 'The air smells of old wax and dust.' },
+    ]))
+  })
+  await page.goto('/')
+
+  // Assistant message carries the mug bar "*Barkeep*:" on the left.
+  await expect(page.getByText('Barkeep:')).toBeVisible()
+  // User message carries the sword bar with the seeded name on the right.
+  await expect(page.getByText('Renna:')).toBeVisible()
+
+  // Live tie: renaming the character re-points the user bar without a reload.
+  // The field lives in the collapsible Basic Information card — expand it first.
+  await page.getByLabel('Expand basic information').click()
+  await page.getByLabel('Character Name').fill('Sable')
+  await expect(page.getByText('Sable:')).toBeVisible()
+  await expect(page.getByText('Renna:')).toHaveCount(0)
 })

@@ -316,25 +316,43 @@ body {
    3px blur is sized for our small icons (the sheet's .spr-glow is 6px — too
    wide). Applied via the `glow` prop on components/sprite-icon.tsx (default
    on). Alpha tuned down ~30% (0.55 → 0.38) per owner: presence without a halo.
-   HOVER (owner direction): the resting halo lifts into a brighter, softer
-   amber that diffuses farther — a two-stage drop-shadow (tight + long) for
-   the diffuse falloff; trash gets the same treatment in RED so destructive
-   actions read at a glance. Scoped to the host button so it only lifts on
-   interaction. */
+   --rest-glow indirection lets themes/roles re-hue the RESTING halo without
+   touching the filter math (and never overrides the hover rules, which set
+   explicit filters and therefore always win).
+
+   owner direction: in the LIGHT theme the resting halo is purple (the dark
+   tile art plays against the light panel; purple is the contrast) — except
+   destructive icons, which keep their red signal in both themes.
+   owner direction: the "delete" (action-trash) icon carries its halo in RED
+   at rest, not just on hover — resting red is the "destructive action"
+   signal before any interaction. */
 .spr-glow-sm {
-  filter: drop-shadow(0 0 3px rgb(var(--glow, 255 170 60) / 0.5));
+  --rest-glow: var(--glow, 255 170 60);
+  filter: drop-shadow(0 0 3px rgb(var(--rest-glow) / 0.5));
   transition: filter 160ms ease;
+}
+html.light .spr-glow-sm:not(.spr-action-trash) {
+  --rest-glow: 139 92 246;
+}
+.spr-glow-sm.spr-action-trash {
+  --rest-glow: 229 42 26;
 }
 button:hover > .spr-glow-sm,
 button:focus-visible > .spr-glow-sm {
-  filter: drop-shadow(0 0 2px rgb(255 199 148 / 0.55)) drop-shadow(0 0 9px rgb(255 177 95 / 0.5));
+  /* owner direction: the hover glow must not trace the silhouette — on
+     box-shaped art (the chat "delete" chest, the scroll, the bottles) a
+     tight two-stage shadow reads as a bounding BOX around the icon, with
+     the glow clipped to it. So the tight stage drops to a whisper and the
+     outer stage diffuses much wider: the icon emits light instead of being
+     framed by it. (The button's radial pool below finishes the halo.) */
+  filter: drop-shadow(0 0 1.5px rgb(255 199 148 / 0.4)) drop-shadow(0 0 14px rgb(255 177 95 / 0.42));
 }
 button:hover > .spr-glow-sm.spr-action-trash,
 button:focus-visible > .spr-glow-sm.spr-action-trash {
   /* owner direction: "a bit more red" — pushed both stages toward a truer,
-     deeper red (255 158 132 → 255 128 100, 239 86 64 → 229 42 26) and the
-     outer-stage alpha up slightly (0.5 → 0.55) for presence. */
-  filter: drop-shadow(0 0 2px rgb(255 128 100 / 0.55)) drop-shadow(0 0 9px rgb(229 42 26 / 0.55));
+     deeper red (255 158 132 → 255 128 100, 239 86 64 → 229 42 26). Same
+     diffuse shape as the amber stage above (see the box fix). */
+  filter: drop-shadow(0 0 1.5px rgb(255 128 100 / 0.45)) drop-shadow(0 0 14px rgb(229 42 26 / 0.48));
 }
 
 /* owner direction: on hover the GLOW is the only cue — no background "box".
@@ -342,10 +360,26 @@ button:focus-visible > .spr-glow-sm.spr-action-trash {
    otherwise paint a rounded box behind the icon. Scoped to buttons whose
    direct child is a sprite icon; `:has()` lifts specificity to (0,3,1),
    which beats every Tailwind hover:bg-* utility (0,2,0). The button keeps
-   its focus-visible RING (accessibility) — only the painted box is removed. */
+   its focus-visible RING (accessibility) — only the painted box is removed.
+   The radial pool (owner direction: kill the "box around the glow" look) is
+   the same ambient light in gradient form — a soft edge-free wash behind the
+   icon that the diffuse drop-shadow stage sits on. */
 button:has(> .spr-glow-sm):hover,
 button:has(> .spr-glow-sm):focus-visible {
   background-color: transparent;
+  background-image: radial-gradient(60% 60% at 50% 50%, rgb(255 177 95 / 0.22), transparent 75%);
+}
+button:has(> .spr-glow-sm.spr-action-trash):hover,
+button:has(> .spr-glow-sm.spr-action-trash):focus-visible {
+  background-image: radial-gradient(60% 60% at 50% 50%, rgb(229 42 26 / 0.24), transparent 75%);
+}
+
+/* owner direction: the disabled reorder arrows should read as clearly OFF —
+   desaturate the sprite (the host button already halves its opacity via
+   disabled:opacity-50, so no second opacity here or they multiply too far).
+   Specificity (0,2,1) beats the resting rules above. */
+button:disabled > .spr-glow-sm {
+  filter: grayscale(0.9) brightness(0.85);
 }
 
 /* Tavern theme (v1.2.0): candlelight in the room behind the panels — a faint

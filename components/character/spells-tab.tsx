@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { PlusIcon } from "lucide-react"
 import SpriteIcon from "@/components/sprite-icon"
+import SpriteLabel from "./sprite-label"
 import type { CharacterData, Spell } from "@/lib/types"
 import { formatSpellLevel } from "./helpers"
 import TabFilter from "../tab-filter"
@@ -167,13 +168,13 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                             <h4 className="font-bold">{spell.name}</h4>
                             {/* owner direction (v1.2.0): school pill → the sheet's
                                 school sprite. SpellSchool values match the sprite
-                                suffixes 1:1, so interpolate directly. */}
-                            <span
-                              title={spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
-                              className="inline-flex items-center"
-                            >
-                              <SpriteIcon name={`school-${spell.school}`} s={0.19} />
-                            </span>
+                                suffixes 1:1, so interpolate directly. The badge now
+                                names its school on click (SpriteLabel popover). */}
+                            <SpriteLabel
+                              sprite={`school-${spell.school}`}
+                              s={0.19}
+                              label={spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
+                            />
                             {level > 0 && (
                               <div className="flex items-center gap-2">
                                 <Checkbox

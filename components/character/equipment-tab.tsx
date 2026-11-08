@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { CheckIcon, PlusIcon, XIcon } from "lucide-react"
 import SpriteIcon from "@/components/sprite-icon"
+import SpriteLabel from "./sprite-label"
 import type { CharacterData, Equipment, ItemRarity } from "@/lib/types"
 import { RARITY_BOTTLE } from "./helpers"
 import TabFilter from "../tab-filter"
@@ -124,7 +125,9 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      {/* v1.2.0 owner direction: same title/content gap as the Inventory tab
+          (32px, matching the Spells tab's airier first-heading spacing). */}
+      <CardContent className="pt-8">
         <div className="space-y-4">
           {character.equipment.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">No equipment items</div>
@@ -228,13 +231,13 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
                         {item.name} {item.equipped && "(Equipped)"}
                         {/* owner direction (v1.2.0): rarity pill → the sheet's bottle
                             sprite for that rarity (RARITY_BOTTLE in helpers.ts handles
-                            the "very rare" → "bottle-very-rare" name mismatch). */}
-                        <span
-                          title={item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
-                          className="inline-flex items-center"
-                        >
-                          <SpriteIcon name={RARITY_BOTTLE[item.rarity]} s={0.19} />
-                        </span>
+                            the "very rare" → "bottle-very-rare" name mismatch). The
+                            badge now names it on click (SpriteLabel popover). */}
+                        <SpriteLabel
+                          sprite={RARITY_BOTTLE[item.rarity]}
+                          s={0.19}
+                          label={item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
+                        />
                       </div>
                       {item.description && (
                         <div className="text-sm text-muted-foreground">

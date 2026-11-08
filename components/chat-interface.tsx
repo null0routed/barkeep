@@ -200,6 +200,7 @@ type ToolCallOutcome = {
 const ChatMessageComponent = memo(
   ({
     message,
+    characterName,
     onDelete,
     onRegenerate,
     isRegenerating,
@@ -213,6 +214,11 @@ const ChatMessageComponent = memo(
     checkpoints,
   }: {
     message: ChatMessage
+    // v1.2.0: live player name for the user speaker bar (trimmed name, may be
+    // empty — component falls back to "You"). Primitive prop on purpose: the
+    // memo() chain below does a cheap string compare, and ONLY a rename flips
+    // it — every other render passes the same reference through.
+    characterName: string
     onDelete: (id: string) => void
     onRegenerate?: (id: string) => void
     isRegenerating?: boolean
@@ -259,7 +265,22 @@ const ChatMessageComponent = memo(
     }, [openPopover])
 
     return (
-      <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+        {/* v1.2.0 owner direction: speaker title bar above each message —
+            assistant left "<mug> *Barkeep*:", user right "<sword> <Name>:".
+            The name is live-tied to Basic Information > Character Name and
+            flows down the memo() chain as a primitive (see prop note above);
+            a rename re-points these cheap labels only — the markdown bodies
+            are memoized, so a rename never re-parses history. */}
+        <div className="mb-1 flex items-center gap-1.5 text-sm">
+          <SpriteIcon name={isUser ? "sword" : "mug"} s={isUser ? 0.105 : 0.19} />
+          <span className="font-medium">
+            <span className="italic">{isUser ? (characterName || "You") : "Barkeep"}</span>
+            {/* colon hugs the name (not a flex child — the row gap would leave
+                it floating) and stays non-italic, like "*Barkeep*:" */}
+            <span aria-hidden className="text-muted-foreground">:</span>
+          </span>
+        </div>
         <div
           className={`flex items-start gap-1 group ${
             isUser ? "flex-row-reverse" : "flex-row"
@@ -475,6 +496,7 @@ ChatMessageComponent.displayName = "ChatMessage"
 const MessageList = memo(
   ({
     messages,
+    characterName,
     showThinking,
     messagesEndRef,
     onDeleteMessage,
@@ -490,6 +512,10 @@ const MessageList = memo(
     checkpoints,
   }: {
     messages: ChatMessage[]
+    // v1.2.0: same prop-note as ChatMessageComponent — one string, so the
+    // memo() diff stays O(1) per rename and typing in the name field never
+    // invalidates a message's memo for any OTHER reason.
+    characterName: string
     showThinking: boolean
     messagesEndRef: React.RefObject<HTMLDivElement | null>
     onDeleteMessage: (id: string) => void
@@ -522,6 +548,7 @@ const MessageList = memo(
               <ChatMessageComponent
                 key={message.id}
                 message={message}
+                characterName={characterName}
                 onDelete={onDeleteMessage}
                 onRegenerate={message.role === "assistant" ? onRegenerateMessage : undefined}
                 isRegenerating={regeneratingId === message.id}
@@ -2078,6 +2105,7 @@ export default function ChatInterface({
       >
         <MessageList
           messages={messages}
+          characterName={character.name.trim()}
           showThinking={isLoading && !turnHasContent}
           messagesEndRef={messagesEndRef}
           onDeleteMessage={handleDeleteMessage}
