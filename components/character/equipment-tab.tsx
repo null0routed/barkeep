@@ -16,6 +16,9 @@ import type { CharacterData, Equipment, ItemRarity } from "@/lib/types"
 import { getRarityColor } from "./helpers"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex } from "@/lib/reorder"
 
 interface EquipmentTabProps {
   character: CharacterData
@@ -77,6 +80,24 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
     }
   }
 
+  // TODO.MD #17: reorder — hidden while a row is in inline edit (index-based edit
+  // state; see the traits tab for the same guard).
+  const reorderEnabled = editingEquipmentIndex === null
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleEquipmentDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (sourceIndex < 0 || sourceIndex >= prev.equipment.length || targetIndex < 0 || targetIndex >= prev.equipment.length)
+        return prev
+      return { ...prev, equipment: moveItem(prev.equipment, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
+  }
+
   // T5.1: per-tab name filter (query lives here, so only this tab re-renders).
   // Rendering stays on the ORIGINAL array and skips non-matches, keeping the true
   // array indices the edit/delete handlers rely on.
@@ -114,9 +135,39 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
           ) : (
             character.equipment.map((item, index) =>
               filtering && !itemMatches(item, filterQuery) ? null : (
-              <div key={index} className="flex items-center justify-between border-b pb-2">
-                {editingEquipmentIndex === index ? (
-                  <div className="flex-1 space-y-2">
+              <div
+                key={index}
+                data-reorder-row
+                className={`border rounded-md p-3 ${
+                  reorderEnabled
+                    ? isDropIndex(index, "before")
+                      ? "border-t-2 border-t-primary"
+                      : isDropIndex(index, "after")
+                        ? "border-b-2 border-b-primary"
+                        : ""
+                    : ""
+                }`}
+                onDragOver={reorderEnabled ? (event) => rowDragOver(event, index) : undefined}
+                onDrop={reorderEnabled ? (event) => handleEquipmentDrop(event, index) : undefined}
+              >
+                <div className="flex items-center gap-1">
+                  {reorderEnabled && (
+                    <ReorderControls
+                      noun="equipment"
+                      canMoveUp={index > 0}
+                      canMoveDown={index < character.equipment.length - 1}
+                      onMoveUp={() =>
+                        setCharacter((prev) => ({ ...prev, equipment: moveItem(prev.equipment, index, index - 1) }))
+                      }
+                      onMoveDown={() =>
+                        setCharacter((prev) => ({ ...prev, equipment: moveItem(prev.equipment, index, index + 1) }))
+                      }
+                      onGripDragStart={(event) => startDrag(event, index)}
+                      onGripDragEnd={clearDrag}
+                    />
+                  )}
+                  {editingEquipmentIndex === index ? (
+                    <div className="min-w-0 flex-1 space-y-2">
                     <Input
                       value={tempEquipmentItem.name}
                       onChange={(e) => setTempEquipmentItem({ ...tempEquipmentItem, name: e.target.value })}
@@ -171,8 +222,8 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <div className="flex-1">
+                  <div className="flex min-w-0 flex-1 items-center justify-between">
+                    <div className="min-w-0">
                       <div className="font-medium flex items-center gap-2">
                         {item.name} {item.equipped && "(Equipped)"}
                         <Badge className={getRarityColor(item.rarity)}>
@@ -200,8 +251,9 @@ export default function EquipmentTab({ character, setCharacter, editingEquipment
                         <Trash2Icon className="h-4 w-4" />
                       </Button>
                     </div>
-                  </>
+                  </div>
                 )}
+                </div>
               </div>
             ))
           )}

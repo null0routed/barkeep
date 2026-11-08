@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PlusIcon, Trash2Icon } from "lucide-react"
 import type { CharacterData } from "@/lib/types"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex } from "@/lib/reorder"
 
 interface ProficienciesTabProps {
   character: CharacterData
@@ -20,6 +23,28 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
       ...prev,
       proficiencies: prev.proficiencies.filter((p) => p.id !== id),
     }))
+  }
+
+  // TODO.MD #17: reorder. No inline edit exists here, so the controls are always
+  // live (the other tabs hide them while a row is being edited in place).
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleProficiencyDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (
+        sourceIndex < 0 ||
+        sourceIndex >= prev.proficiencies.length ||
+        targetIndex < 0 ||
+        targetIndex >= prev.proficiencies.length
+      )
+        return prev
+      return { ...prev, proficiencies: moveItem(prev.proficiencies, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
   }
 
   return (
@@ -36,17 +61,44 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
             <div className="text-center py-4 text-muted-foreground">No proficiencies</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {character.proficiencies.map((proficiency) => (
-                <div key={proficiency.id} className="flex items-center justify-between border p-2 rounded-md">
-                  <div>
-                    <span className="font-medium">{proficiency.name}</span>
-                    <Badge variant="outline" className="ml-2">
-                      {proficiency.type.charAt(0).toUpperCase() + proficiency.type.slice(1)}
-                    </Badge>
+              {character.proficiencies.map((proficiency, index) => (
+                <div
+                  key={proficiency.id}
+                  data-reorder-row
+                  className={`border p-2 rounded-md ${
+                    isDropIndex(index, "before")
+                      ? "border-t-2 border-t-primary"
+                      : isDropIndex(index, "after")
+                        ? "border-b-2 border-b-primary"
+                        : ""
+                  }`}
+                  onDragOver={(event) => rowDragOver(event, index)}
+                  onDrop={(event) => handleProficiencyDrop(event, index)}
+                >
+                  <div className="flex items-center gap-1">
+                    <ReorderControls
+                      noun="proficiency"
+                      canMoveUp={index > 0}
+                      canMoveDown={index < character.proficiencies.length - 1}
+                      onMoveUp={() =>
+                        setCharacter((prev) => ({ ...prev, proficiencies: moveItem(prev.proficiencies, index, index - 1) }))
+                      }
+                      onMoveDown={() =>
+                        setCharacter((prev) => ({ ...prev, proficiencies: moveItem(prev.proficiencies, index, index + 1) }))
+                      }
+                      onGripDragStart={(event) => startDrag(event, index)}
+                      onGripDragEnd={clearDrag}
+                    />
+                    <div className="flex min-w-0 flex-1 items-center justify-between">
+                      <span className="min-w-0 font-medium">{proficiency.name}</span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Badge variant="outline">{proficiency.type.charAt(0).toUpperCase() + proficiency.type.slice(1)}</Badge>
+                        <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove proficiency" onClick={() => removeProficiency(proficiency.id)}>
+                          <Trash2Icon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <Button size="icon" variant="ghost" className="hover:bg-destructive/10 hover:text-destructive" aria-label="Remove proficiency" onClick={() => removeProficiency(proficiency.id)}>
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
             </div>

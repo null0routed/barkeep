@@ -159,3 +159,119 @@ test('turn that saved a checkpoint in the background shows a shield badge + popo
   await page.keyboard.press('Escape')
   await expect(popover).toHaveCount(0)
 })
+
+test('traits reorder: arrows swap, edges disable, controls hide while a row is being edited (TODO.MD #17)', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('dnd-character', JSON.stringify({
+      name: 'Renna',
+      traits: [
+        { id: 't1', name: 'Fox Cunning', description: '', source: 'Variant human' },
+        { id: 't2', name: 'Lightfoot Stealth', description: '', source: 'Variant human' },
+      ],
+    }))
+  })
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Traits' }).click()
+
+  const rows = page.locator('[data-reorder-row]')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0)).toContainText('Fox Cunning')
+  await expect(rows.nth(1)).toContainText('Lightfoot Stealth')
+
+  // Group edges: up disabled on the first row, down disabled on the last
+  await expect(rows.nth(0).getByRole('button', { name: 'Move trait up' })).toBeDisabled()
+  await expect(rows.nth(1).getByRole('button', { name: 'Move trait down' })).toBeDisabled()
+
+  // Swap via the guaranteed arrow path
+  await rows.nth(0).getByRole('button', { name: 'Move trait down' }).click()
+  await expect(rows.nth(0)).toContainText('Lightfoot Stealth')
+  await expect(rows.nth(1)).toContainText('Fox Cunning')
+
+  // A row is now in inline edit -> every row's reorder controls hide (its edit
+  // state is index-based, so rows may not move under or around an open editor)
+  await rows.nth(0).getByRole('button', { name: 'Edit trait' }).click()
+  await expect(page.getByRole('button', { name: 'Move trait up' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Move trait down' })).toHaveCount(0)
+})
+
+test('spells reorder stays within the level group (TODO.MD #17)', async ({ page }) => {
+  await page.addInitScript(() => {
+    const spell = (id: string, name: string, level: number, school: string) => ({
+      id, name, description: '', level, school,
+      range: '30 feet', duration: 'Instantaneous', castingTime: '1 action',
+      verbal: true, somatic: false, material: false, materialComponents: '', prepared: false,
+    })
+    localStorage.setItem('dnd-character', JSON.stringify({
+      name: 'Renna',
+      spells: [
+        spell('c1', 'Mage Hand', 0, 'conjuration'),
+        spell('c2', 'Prestidigitation', 0, 'transmutation'),
+        spell('s1', 'Fire Bolt', 1, 'evocation'),
+      ],
+    }))
+  })
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Spells' }).click()
+
+  const mageHand = page.locator('[data-reorder-row]', { hasText: 'Mage Hand' })
+  const prestidigitation = page.locator('[data-reorder-row]', { hasText: 'Prestidigitation' })
+  const fireBolt = page.locator('[data-reorder-row]', { hasText: 'Fire Bolt' })
+
+  // Mage Hand: up disabled (top of the cantrip group), down targets the second
+  // cantrip — never Fire Bolt
+  await expect(mageHand.getByRole('button', { name: 'Move spell up' })).toBeDisabled()
+  await expect(mageHand.getByRole('button', { name: 'Move spell down' })).toBeEnabled()
+
+  // Prestidigitation is the LAST cantrip: its only neighbor is a different level -> down disabled
+  await expect(prestidigitation.getByRole('button', { name: 'Move spell down' })).toBeDisabled()
+
+  // Fire Bolt is alone at level 1: no same-level neighbor in either direction
+  await expect(fireBolt.getByRole('button', { name: 'Move spell up' })).toBeDisabled()
+  await expect(fireBolt.getByRole('button', { name: 'Move spell down' })).toBeDisabled()
+
+  // Swap the cantrips; Fire Bolt does not move
+  await mageHand.getByRole('button', { name: 'Move spell down' }).click()
+  const rows = page.locator('[data-reorder-row]')
+  await expect(rows.nth(0)).toContainText('Prestidigitation')
+  await expect(rows.nth(1)).toContainText('Mage Hand')
+  await expect(rows.nth(2)).toContainText('Fire Bolt')
+
+  // Mage Hand is now the last cantrip: back via "Move spell up"
+  await expect(mageHand.getByRole('button', { name: 'Move spell down' })).toBeDisabled()
+  await mageHand.getByRole('button', { name: 'Move spell up' }).click()
+  await expect(rows.nth(0)).toContainText('Mage Hand')
+  await expect(rows.nth(1)).toContainText('Prestidigitation')
+})
+
+test('reordered trait order survives a reload (TODO.MD #17)', async ({ page }) => {
+  await page.addInitScript(() => {
+    // Seed ONLY on the first load: addInitScript re-runs on every navigation, and
+    // re-seeding on the reload would overwrite the very autosave we are asserting.
+    if (localStorage.getItem('dnd-character')) return
+    localStorage.setItem('dnd-character', JSON.stringify({
+      name: 'Renna',
+      traits: [
+        { id: 't1', name: 'Fox Cunning', description: '', source: 'Variant human' },
+        { id: 't2', name: 'Lightfoot Stealth', description: '', source: 'Variant human' },
+        { id: 't3', name: 'Keen Senses', description: '', source: 'Variant half-elf' },
+      ],
+    }))
+  })
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Traits' }).click()
+
+  // Move Keen Senses to the top with two up-swaps
+  const keen = page.locator('[data-reorder-row]', { hasText: 'Keen Senses' })
+  await keen.getByRole('button', { name: 'Move trait up' }).click()
+  await keen.getByRole('button', { name: 'Move trait up' }).click()
+  const rows = page.locator('[data-reorder-row]')
+  await expect(rows.nth(0)).toContainText('Keen Senses')
+
+  // Autosave persisted the new order — reload and confirm it held
+  await page.reload()
+  await page.getByRole('tab', { name: 'Traits' }).click()
+  const reloaded = page.locator('[data-reorder-row]')
+  await expect(reloaded.nth(0)).toContainText('Keen Senses')
+  await expect(reloaded.nth(1)).toContainText('Fox Cunning')
+  await expect(reloaded.nth(2)).toContainText('Lightfoot Stealth')
+})

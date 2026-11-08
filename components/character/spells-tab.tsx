@@ -14,6 +14,9 @@ import type { CharacterData, Spell } from "@/lib/types"
 import { formatSpellLevel, getSpellSchoolColor } from "./helpers"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex, swapSpellNeighbors } from "@/lib/reorder"
 
 interface SpellsTabProps {
   character: CharacterData
@@ -35,6 +38,32 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
       ...prev,
       spells: prev.spells.map((spell) => (spell.id === id ? { ...spell, prepared: !spell.prepared } : spell)),
     }))
+  }
+
+  // TODO.MD #17: reorder WITHIN the spell's level group. Arrows go through
+  // swapSpellNeighbors, which is level-aware. For the grip-DnD (index-based) the
+  // same rule is a target guard: a row only accepts a drop when the dragged spell
+  // shares its level (see `dropTarget` on the rows), so the indicator and the drop
+  // both stay inside the group.
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleSpellDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (
+        sourceIndex < 0 ||
+        sourceIndex >= prev.spells.length ||
+        targetIndex < 0 ||
+        targetIndex >= prev.spells.length ||
+        prev.spells[sourceIndex]?.level !== prev.spells[targetIndex]?.level
+      )
+        return prev
+      return { ...prev, spells: moveItem(prev.spells, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
   }
 
   // T5.1: per-tab name filter. Row handlers key off spell.id (not the index), so it
@@ -89,8 +118,46 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                 <div key={level} className="space-y-2">
                   <h3 className="font-medium">{formatSpellLevel(level)}</h3>
                   <div className="space-y-2">
-                    {spellsAtLevel.map((spell) => (
-                      <div key={spell.id} className="border rounded-md p-3">
+                    {spellsAtLevel.map((spell) => {
+                      const globalIndex = character.spells.findIndex((s) => s.id === spell.id)
+                      // A legal drop target only if the dragged spell is in this row's level group.
+                      const dropTarget =
+                        dragIndex !== null && dragIndex !== globalIndex && character.spells[dragIndex]?.level === spell.level
+                      return (
+                      <div
+                        key={spell.id}
+                        data-reorder-row
+                        className={`border rounded-md p-3 ${
+                          isDropIndex(globalIndex, "before")
+                            ? "border-t-2 border-t-primary"
+                            : isDropIndex(globalIndex, "after")
+                              ? "border-b-2 border-b-primary"
+                              : ""
+                        }`}
+                        onDragOver={dropTarget ? (event) => rowDragOver(event, globalIndex) : undefined}
+                        onDrop={dropTarget ? (event) => handleSpellDrop(event, globalIndex) : undefined}
+                      >
+                        <div className="flex items-center gap-1">
+                          <ReorderControls
+                            noun="spell"
+                            canMoveUp={swapSpellNeighbors(character.spells, spell.id, "up") !== null}
+                            canMoveDown={swapSpellNeighbors(character.spells, spell.id, "down") !== null}
+                            onMoveUp={() =>
+                              setCharacter((prev) => {
+                                const next = swapSpellNeighbors(prev.spells, spell.id, "up")
+                                return next ? { ...prev, spells: next } : prev
+                              })
+                            }
+                            onMoveDown={() =>
+                              setCharacter((prev) => {
+                                const next = swapSpellNeighbors(prev.spells, spell.id, "down")
+                                return next ? { ...prev, spells: next } : prev
+                              })
+                            }
+                            onGripDragStart={(event) => startDrag(event, globalIndex)}
+                            onGripDragEnd={clearDrag}
+                          />
+                          <div className="min-w-0 flex-1">
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold">{spell.name}</h4>
@@ -146,8 +213,11 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                             <MarkdownBody content={spell.description} compact />
                           </div>
                         </div>
+                          </div>
+                        </div>
                       </div>
-                    ))}
+                    )
+                    })}
                   </div>
                 </div>
               )

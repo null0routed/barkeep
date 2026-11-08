@@ -12,6 +12,9 @@ import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import type { CharacterData, Trait } from "@/lib/types"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex } from "@/lib/reorder"
 
 interface TraitsTabProps {
   character: CharacterData
@@ -54,6 +57,24 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
     }
   }
 
+  // TODO.MD #17: reorder. Arrows/grip are hidden while a row is in inline edit —
+  // that tab's edit state is index-based, so moving rows around an open editor would
+  // point it at a different trait (hiding is the zero-refactor safe rule).
+  const reorderEnabled = editingTraitIndex === null
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleTraitDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (sourceIndex < 0 || sourceIndex >= prev.traits.length || targetIndex < 0 || targetIndex >= prev.traits.length) return prev
+      return { ...prev, traits: moveItem(prev.traits, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
+  }
+
   // T5.1: per-tab name filter (query lives here, so only this tab re-renders).
   // Rendering stays on the ORIGINAL array and skips non-matches, keeping the true
   // array indices the edit/delete handlers rely on.
@@ -91,9 +112,39 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
           ) : (
             character.traits.map((trait, index) =>
               filtering && !itemMatches(trait, filterQuery) ? null : (
-              <div key={trait.id} className="border rounded-md p-3">
-                {editingTraitIndex === index ? (
-                  <div className="space-y-2">
+              <div
+                key={trait.id}
+                data-reorder-row
+                className={`border rounded-md p-3 ${
+                  reorderEnabled
+                    ? isDropIndex(index, "before")
+                      ? "border-t-2 border-t-primary"
+                      : isDropIndex(index, "after")
+                        ? "border-b-2 border-b-primary"
+                        : ""
+                    : ""
+                }`}
+                onDragOver={reorderEnabled ? (event) => rowDragOver(event, index) : undefined}
+                onDrop={reorderEnabled ? (event) => handleTraitDrop(event, index) : undefined}
+              >
+                <div className="flex items-center gap-1">
+                  {reorderEnabled && (
+                    <ReorderControls
+                      noun="trait"
+                      canMoveUp={index > 0}
+                      canMoveDown={index < character.traits.length - 1}
+                      onMoveUp={() =>
+                        setCharacter((prev) => ({ ...prev, traits: moveItem(prev.traits, index, index - 1) }))
+                      }
+                      onMoveDown={() =>
+                        setCharacter((prev) => ({ ...prev, traits: moveItem(prev.traits, index, index + 1) }))
+                      }
+                      onGripDragStart={(event) => startDrag(event, index)}
+                      onGripDragEnd={clearDrag}
+                    />
+                  )}
+                  {editingTraitIndex === index ? (
+                  <div className="min-w-0 flex-1 space-y-2">
                     <Input
                       value={tempTrait.name}
                       onChange={(e) => setTempTrait({ ...tempTrait, name: e.target.value })}
@@ -120,7 +171,7 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
                     </div>
                   </div>
                 ) : (
-                  <>
+                  <div className="min-w-0 flex-1">
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="font-bold">{trait.name}</h3>
@@ -138,8 +189,9 @@ export default function TraitsTab({ character, setCharacter, editingTraitIndex, 
                     <div className="mt-2">
                       <MarkdownBody content={trait.description} compact />
                     </div>
-                  </>
+                  </div>
                 )}
+                </div>
               </div>
             ))
           )}

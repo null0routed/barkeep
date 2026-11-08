@@ -50,7 +50,7 @@
 
 19. ~~Insert icons in front of "Export" on main page and then the menu options in the menu.~~ — done in eaba466
 
-20. "Feat" and "Trait" have a "Pull from chat" toggle - how do we clean this up?
+20. ~~"Feat" and "Trait" have a "Pull from chat" toggle - how do we clean this up?~~ — done in 6b6d98f (toggle removed; both dialogs mirror the item dialog's inline "Generate Details" fetch, seeded from chat)
 
 21. A tactical map - just an plane with grids/grid coordinates showing dots for where everyone is so that player and DM can get a sense of positioning and use ranged tools better. DM can add obstacles and walls possibly?
 

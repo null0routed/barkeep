@@ -15,6 +15,9 @@ import type { CharacterData, InventoryItem, ItemRarity } from "@/lib/types"
 import { getRarityColor } from "./helpers"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex } from "@/lib/reorder"
 
 interface InventoryTabProps {
   character: CharacterData
@@ -63,6 +66,24 @@ export default function InventoryTab({ character, setCharacter, editingInventory
     }
   }
 
+  // TODO.MD #17: reorder — hidden while a row is in inline edit (index-based edit
+  // state; see the traits tab for the same guard).
+  const reorderEnabled = editingInventoryIndex === null
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleItemDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (sourceIndex < 0 || sourceIndex >= prev.inventory.length || targetIndex < 0 || targetIndex >= prev.inventory.length)
+        return prev
+      return { ...prev, inventory: moveItem(prev.inventory, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
+  }
+
   // T5.1: per-tab name filter. The query lives here so only THIS tab re-renders on
   // each keystroke. The list below stays the ORIGINAL array (skipping non-matches) —
   // the row handlers (edit/delete) key off the true array index, which a filtered
@@ -103,9 +124,39 @@ export default function InventoryTab({ character, setCharacter, editingInventory
           ) : (
             character.inventory.map((item, index) =>
               filtering && !itemMatches(item, filterQuery) ? null : (
-              <div key={index} className="flex items-center justify-between border-b pb-2">
-                {editingInventoryIndex === index ? (
-                  <div className="flex-1 space-y-2">
+              <div
+                key={index}
+                data-reorder-row
+                className={`border rounded-md p-3 ${
+                  reorderEnabled
+                    ? isDropIndex(index, "before")
+                      ? "border-t-2 border-t-primary"
+                      : isDropIndex(index, "after")
+                        ? "border-b-2 border-b-primary"
+                        : ""
+                    : ""
+                }`}
+                onDragOver={reorderEnabled ? (event) => rowDragOver(event, index) : undefined}
+                onDrop={reorderEnabled ? (event) => handleItemDrop(event, index) : undefined}
+              >
+                <div className="flex items-center gap-1">
+                  {reorderEnabled && (
+                    <ReorderControls
+                      noun="item"
+                      canMoveUp={index > 0}
+                      canMoveDown={index < character.inventory.length - 1}
+                      onMoveUp={() =>
+                        setCharacter((prev) => ({ ...prev, inventory: moveItem(prev.inventory, index, index - 1) }))
+                      }
+                      onMoveDown={() =>
+                        setCharacter((prev) => ({ ...prev, inventory: moveItem(prev.inventory, index, index + 1) }))
+                      }
+                      onGripDragStart={(event) => startDrag(event, index)}
+                      onGripDragEnd={clearDrag}
+                    />
+                  )}
+                  {editingInventoryIndex === index ? (
+                    <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex gap-2">
                       <Input
                         value={tempInventoryItem.name}
@@ -162,8 +213,8 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <div className="flex-1">
+                  <div className="flex min-w-0 flex-1 items-center justify-between">
+                    <div className="min-w-0">
                       <div className="font-medium flex items-center gap-2">
                         {item.name} {item.quantity > 1 && `(${item.quantity})`}
                         <Badge className={getRarityColor(item.rarity)}>
@@ -184,8 +235,9 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                         <Trash2Icon className="h-4 w-4" />
                       </Button>
                     </div>
-                  </>
+                  </div>
                 )}
+                </div>
               </div>
             ))
           )}

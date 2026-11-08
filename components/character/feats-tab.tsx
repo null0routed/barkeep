@@ -12,6 +12,9 @@ import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import type { CharacterData, Feat } from "@/lib/types"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
+import ReorderControls from "./reorder-controls"
+import { useListDrag } from "./use-list-drag"
+import { moveItem, dropInsertIndex } from "@/lib/reorder"
 
 interface FeatsTabProps {
   character: CharacterData
@@ -54,6 +57,23 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
     }
   }
 
+  // TODO.MD #17: reorder — hidden while a row is in inline edit (index-based edit
+  // state; see the traits tab for the same guard).
+  const reorderEnabled = editingFeatIndex === null
+  const { dragIndex, startDrag, clearDrag, rowDragOver, isDropIndex } = useListDrag()
+  const handleFeatDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault()
+    const sourceIndex = dragIndex
+    clearDrag()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const edge: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    setCharacter((prev) => {
+      if (sourceIndex < 0 || sourceIndex >= prev.feats.length || targetIndex < 0 || targetIndex >= prev.feats.length) return prev
+      return { ...prev, feats: moveItem(prev.feats, sourceIndex, dropInsertIndex(sourceIndex, targetIndex, edge)) }
+    })
+  }
+
   // T5.1: per-tab name filter (query lives here, so only this tab re-renders).
   // Rendering stays on the ORIGINAL array and skips non-matches, keeping the true
   // array indices the edit/delete handlers rely on.
@@ -91,9 +111,39 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
           ) : (
             character.feats.map((feat, index) =>
               filtering && !itemMatches(feat, filterQuery) ? null : (
-              <div key={feat.id} className="border rounded-md p-3">
-                {editingFeatIndex === index ? (
-                  <div className="space-y-2">
+              <div
+                key={feat.id}
+                data-reorder-row
+                className={`border rounded-md p-3 ${
+                  reorderEnabled
+                    ? isDropIndex(index, "before")
+                      ? "border-t-2 border-t-primary"
+                      : isDropIndex(index, "after")
+                        ? "border-b-2 border-b-primary"
+                        : ""
+                    : ""
+                }`}
+                onDragOver={reorderEnabled ? (event) => rowDragOver(event, index) : undefined}
+                onDrop={reorderEnabled ? (event) => handleFeatDrop(event, index) : undefined}
+              >
+                <div className="flex items-center gap-1">
+                  {reorderEnabled && (
+                    <ReorderControls
+                      noun="feat"
+                      canMoveUp={index > 0}
+                      canMoveDown={index < character.feats.length - 1}
+                      onMoveUp={() =>
+                        setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index - 1) }))
+                      }
+                      onMoveDown={() =>
+                        setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index + 1) }))
+                      }
+                      onGripDragStart={(event) => startDrag(event, index)}
+                      onGripDragEnd={clearDrag}
+                    />
+                  )}
+                  {editingFeatIndex === index ? (
+                  <div className="min-w-0 flex-1 space-y-2">
                     <Input
                       value={tempFeat.name}
                       onChange={(e) => setTempFeat({ ...tempFeat, name: e.target.value })}
@@ -115,10 +165,21 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                     </div>
                   </div>
                 ) : (
-                  <>
+                  <div className="min-w-0 flex-1">
                     <div className="flex justify-between items-start">
                       <h3 className="font-bold">{feat.name}</h3>
                       <div className="flex flex-col gap-1 sm:flex-row">
+                        {reorderEnabled && (
+                          <ReorderControls
+                            noun="feat"
+                            canMoveUp={index > 0}
+                            canMoveDown={index < character.feats.length - 1}
+                            onMoveUp={() => setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index - 1) }))}
+                            onMoveDown={() => setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index + 1) }))}
+                            onGripDragStart={(event) => startDrag(event, index)}
+                            onGripDragEnd={clearDrag}
+                          />
+                        )}
                         <Button size="icon" variant="ghost" aria-label="Edit feat" onClick={() => startEditingFeat(index)}>
                           <EditIcon className="h-4 w-4" />
                         </Button>
@@ -130,8 +191,9 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                     <div className="mt-2">
                       <MarkdownBody content={feat.description} compact />
                     </div>
-                  </>
+                  </div>
                 )}
+                </div>
               </div>
             ))
           )}

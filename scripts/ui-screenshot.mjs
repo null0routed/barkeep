@@ -15,6 +15,8 @@
 //   sheet-expanded  ditto, Combat Stats + Spell Slots cards expanded (Speed + Spellcasting)
 //   dialog-trait    Add Trait dialog open with a name typed (Generate Details visible)
 //   checkpoint-badge  a turn that saved a checkpoint — shield badge clicked, popover open
+//   sheet-reorder   Traits tab with three rows — grip + up/down reorder controls visible
+//                   (up disabled on the top row, down disabled on the bottom row)
 //
 // The sheet-* scenarios seed a `dnd-character` localStorage save with markdown
 // descriptions (bold/italic/newlines) so the TODO.MD #13 tab rendering is visible.
@@ -40,6 +42,7 @@ const known = [
   "sheet-expanded",
   "dialog-trait",
   "checkpoint-badge",
+  "sheet-reorder",
 ]
 if (!known.includes(scenario)) {
   console.error(`Unknown scenario "${scenario}". Try: ${known.join(" | ")}`)
@@ -161,7 +164,7 @@ const seedCharacter = {
   },
   spellcasting: { spellAttack: 5, spellSaveDc: 13 },
 }
-const sheetScenarios = ["sheet-full", "sheet-traits", "sheet-spells", "sheet-expanded"]
+const sheetScenarios = ["sheet-full", "sheet-traits", "sheet-spells", "sheet-expanded", "sheet-reorder"]
 
 async function serverUp() {
   try {
@@ -188,7 +191,15 @@ try {
   // Sheet scenarios: seed the character save BEFORE first render so the load
   // path (incl. the #14 sanitize merge) runs on this data.
   if (sheetScenarios.includes(scenario)) {
-    await context.addInitScript((seed) => localStorage.setItem("dnd-character", JSON.stringify(seed)), seedCharacter)
+    const seed =
+      scenario === "sheet-reorder"
+        ? { ...seedCharacter, traits: [
+            seedCharacter.traits[0],
+            { id: "t2", name: "Fleet of Foot", description: "Your **unarmored** movement speed is 30 feet.", source: "Rogue, Class Feature" },
+            { id: "t3", name: "Sneak Attack", description: "Once per turn you can deal **extra damage** to one creature.", source: "Rogue, Class Feature" },
+          ] }
+        : seedCharacter
+    await context.addInitScript((s) => localStorage.setItem("dnd-character", JSON.stringify(s)), seed)
   }
   // checkpoint-badge: a saved checkpoint in the store + a chat turn that references it
   if (scenario === "checkpoint-badge") {
@@ -243,6 +254,10 @@ try {
     await page.getByRole("button", { name: "Add Trait" }).click()
     await page.getByRole("dialog").getByLabel("Name").fill("Fox Cunning")
     await page.getByRole("button", { name: "Generate Details" }).waitFor()
+  }
+  if (scenario === "sheet-reorder") {
+    await page.getByRole("tab", { name: "Traits" }).click()
+    await page.getByText("Sneak Attack").waitFor()
   }
   if (scenario === "checkpoint-badge") {
     await page.getByRole("button", { name: "View saved checkpoint" }).click()
