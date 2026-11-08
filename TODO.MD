@@ -44,7 +44,7 @@
 
 16. A dice rolling mechanism.
 
-17. Drag and reorder panels in inventory, equipment, proficiencies, traits and feats. Drag and redorder panels in spells *within their class*.
+17. ~~Drag and reorder panels in inventory, equipment, proficiencies, traits and feats. Drag and redorder panels in spells *within their class*.~~ — done in 72da658 (left-edge rail: up/down arrows + grip-DnD on all six lists; spells move within their level group only; order persists via the existing autosave)
 
 18. ~~Do I need a slider to adjust font size?~~ — Will not implement (no real use case; everything is rem-based, so the lever can still be added cheaply later if a need surfaces)
 
