@@ -322,7 +322,7 @@ body {
    actions read at a glance. Scoped to the host button so it only lifts on
    interaction. */
 .spr-glow-sm {
-  filter: drop-shadow(0 0 3px rgb(var(--glow, 255 170 60) / 0.38));
+  filter: drop-shadow(0 0 3px rgb(var(--glow, 255 170 60) / 0.5));
   transition: filter 160ms ease;
 }
 button:hover > .spr-glow-sm,
@@ -331,7 +331,10 @@ button:focus-visible > .spr-glow-sm {
 }
 button:hover > .spr-glow-sm.spr-action-trash,
 button:focus-visible > .spr-glow-sm.spr-action-trash {
-  filter: drop-shadow(0 0 2px rgb(255 158 132 / 0.55)) drop-shadow(0 0 9px rgb(239 86 64 / 0.5));
+  /* owner direction: "a bit more red" — pushed both stages toward a truer,
+     deeper red (255 158 132 → 255 128 100, 239 86 64 → 229 42 26) and the
+     outer-stage alpha up slightly (0.5 → 0.55) for presence. */
+  filter: drop-shadow(0 0 2px rgb(255 128 100 / 0.55)) drop-shadow(0 0 9px rgb(229 42 26 / 0.55));
 }
 
 /* owner direction: on hover the GLOW is the only cue — no background "box".

@@ -5,14 +5,13 @@ import type React from "react"
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import MarkdownBody from "@/components/markdown-body"
-import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { PlusIcon } from "lucide-react"
 import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData, Spell } from "@/lib/types"
-import { formatSpellLevel, getSpellSchoolColor } from "./helpers"
+import { formatSpellLevel } from "./helpers"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
 import ReorderControls from "./reorder-controls"
@@ -166,9 +165,15 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-bold">{spell.name}</h4>
-                            <Badge className={getSpellSchoolColor(spell.school)}>
-                              {spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
-                            </Badge>
+                            {/* owner direction (v1.2.0): school pill → the sheet's
+                                school sprite. SpellSchool values match the sprite
+                                suffixes 1:1, so interpolate directly. */}
+                            <span
+                              title={spell.school.charAt(0).toUpperCase() + spell.school.slice(1)}
+                              className="inline-flex items-center"
+                            >
+                              <SpriteIcon name={`school-${spell.school}`} s={0.19} />
+                            </span>
                             {level > 0 && (
                               <div className="flex items-center gap-2">
                                 <Checkbox

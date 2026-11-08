@@ -21,6 +21,19 @@ export const getRarityColor = (rarity: ItemRarity) => {
       return "bg-gray-200 text-gray-800"
   }
 }
+// owner direction (v1.2.0): the rarity PILLS on inventory/equipment are replaced
+// by the sheet's bottle sprites. Keyed by the app's ItemRarity value — note
+// "very rare" carries a SPACE in the type while the sprite name uses a dash,
+// hence the explicit map rather than string interpolation.
+export const RARITY_BOTTLE: Record<ItemRarity, string> = {
+  common: "bottle-common",
+  uncommon: "bottle-uncommon",
+  rare: "bottle-rare",
+  "very rare": "bottle-very-rare",
+  legendary: "bottle-legendary",
+  artifact: "bottle-artifact",
+  unknown: "bottle-unknown",
+}
 // Helper function to calculate ability modifier
 export const getAbilityModifier = (score: number) => {
   return Math.floor((score - 10) / 2)

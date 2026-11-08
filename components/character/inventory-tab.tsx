@@ -9,11 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { CheckIcon, PlusIcon, XIcon } from "lucide-react"
 import SpriteIcon from "@/components/sprite-icon"
 import type { CharacterData, InventoryItem, ItemRarity } from "@/lib/types"
-import { getRarityColor } from "./helpers"
+import { RARITY_BOTTLE } from "./helpers"
 import TabFilter from "../tab-filter"
 import { itemMatches } from "@/lib/filter"
 import ReorderControls from "./reorder-controls"
@@ -218,9 +217,15 @@ export default function InventoryTab({ character, setCharacter, editingInventory
                     <div className="min-w-0">
                       <div className="font-medium flex items-center gap-2">
                         {item.name} {item.quantity > 1 && `(${item.quantity})`}
-                        <Badge className={getRarityColor(item.rarity)}>
-                          {item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
-                        </Badge>
+                        {/* owner direction (v1.2.0): rarity pill → the sheet's bottle
+                            sprite for that rarity (RARITY_BOTTLE in helpers.ts handles
+                            the "very rare" → "bottle-very-rare" name mismatch). */}
+                        <span
+                          title={item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1)}
+                          className="inline-flex items-center"
+                        >
+                          <SpriteIcon name={RARITY_BOTTLE[item.rarity]} s={0.19} />
+                        </span>
                       </div>
                       {item.description && (
                         <div className="text-sm text-muted-foreground">
