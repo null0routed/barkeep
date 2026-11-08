@@ -1,12 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { SearchIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 /**
- * Inline name filter for a character-sheet tab (T5.1): a ghost Search icon in the
+ * Inline name filter for a character-sheet tab (T5.1): a ghost search sprite in the
  * tab's CardHeader that expands in place into a focused text input, kept alongside
  * the tab's "+ Add" button. Collapses on Escape or when cleared; the icon also
  * toggles it (and clears the query) — so phones, which have no handy Escape, still
@@ -65,13 +65,13 @@ export default function TabFilter({ noun, query, onQueryChange, matched, total }
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="shrink-0"
         aria-label={open ? `Hide ${noun} filter` : `Filter ${noun}`}
         title={open ? `Hide ${noun} filter` : `Filter ${noun} by name or description`}
         aria-pressed={open}
         onClick={() => (open ? collapse() : setOpen(true))}
       >
-        <SearchIcon className="h-4 w-4" />
+        <SpriteIcon name="action-search" s={0.2} />
       </Button>
     </div>
   )

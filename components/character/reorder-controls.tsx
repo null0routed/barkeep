@@ -1,5 +1,5 @@
 import type React from "react"
-import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon } from "lucide-react"
+import SpriteIcon from "@/components/sprite-icon"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -43,17 +43,17 @@ export default function ReorderControls({
         title={`Move ${noun} up`}
         onClick={onMoveUp}
       >
-        <ArrowUpIcon className="h-3 w-3" />
+        <SpriteIcon name="arrow-up" s={0.2} />
       </Button>
       <span
         draggable={typeof onGripDragStart === "function"}
         onDragStart={onGripDragStart}
         onDragEnd={onGripDragEnd}
         title={`Drag ${noun} to reorder`}
-        className="cursor-grab px-0.5 py-1 text-muted-foreground active:cursor-grabbing"
+        className="cursor-grab px-0.5 py-1 active:cursor-grabbing"
         aria-hidden="true"
       >
-        <GripVerticalIcon className="h-4 w-4" />
+        <SpriteIcon name="action-drag" s={0.11} />
       </span>
       <Button
         size="icon"
@@ -64,7 +64,7 @@ export default function ReorderControls({
         title={`Move ${noun} down`}
         onClick={onMoveDown}
       >
-        <ArrowDownIcon className="h-3 w-3" />
+        <SpriteIcon name="arrow-down" s={0.2} />
       </Button>
     </div>
   )
