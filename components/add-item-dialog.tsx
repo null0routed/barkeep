@@ -196,7 +196,7 @@ export default function AddItemDialog({
           <div className="space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="item-name">Name</Label>
                 <Button
                   type="button"
                   size="sm"
@@ -216,14 +216,14 @@ export default function AddItemDialog({
                   )}
                 </Button>
               </div>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
+              <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
               {generationError && <p className="text-xs text-destructive">{generationError}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="item-description">Description</Label>
               <Textarea
-                id="description"
+                id="item-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Item description"
@@ -232,7 +232,7 @@ export default function AddItemDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rarity">Rarity</Label>
+              <Label htmlFor="item-rarity">Rarity</Label>
               <Select value={rarity} onValueChange={(value) => setRarity(value as ItemRarity)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select rarity" />
@@ -251,9 +251,9 @@ export default function AddItemDialog({
 
             {type === "inventory" && (
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="item-quantity">Quantity</Label>
                 <Input
-                  id="quantity"
+                  id="item-quantity"
                   type="number"
                   value={quantity}
                   onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 1)}
@@ -264,8 +264,8 @@ export default function AddItemDialog({
 
             {type === "equipment" && (
               <div className="flex items-center space-x-2">
-                <Switch id="equipped" checked={equipped} onCheckedChange={setEquipped} />
-                <Label htmlFor="equipped">Equipped</Label>
+                <Switch id="item-equipped" checked={equipped} onCheckedChange={setEquipped} />
+                <Label htmlFor="item-equipped">Equipped</Label>
               </div>
             )}
           </div>

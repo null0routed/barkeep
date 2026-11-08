@@ -41,12 +41,12 @@ export default function AddProficiencyDialog({ open, onOpenChange, onAdd }: AddP
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Proficiency name" />
+            <Label htmlFor="proficiency-name">Name</Label>
+            <Input id="proficiency-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Proficiency name" />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
+            <Label htmlFor="proficiency-type">Type</Label>
             <Select value={type} onValueChange={(value) => setType(value as any)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select type" />

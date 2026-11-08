@@ -161,7 +161,7 @@ export default function AddFeatDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="feat-name">Name</Label>
               <Button
                 type="button"
                 size="sm"
@@ -181,14 +181,14 @@ export default function AddFeatDialog({
                 )}
               </Button>
             </div>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Feat name" />
+            <Input id="feat-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Feat name" />
             {generationError && <p className="text-xs text-destructive">{generationError}</p>}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="feat-description">Description</Label>
             <Textarea
-              id="description"
+              id="feat-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Feat description"

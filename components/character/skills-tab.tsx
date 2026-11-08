@@ -51,7 +51,7 @@ export default function SkillsTab({ character, setCharacter }: SkillsTabProps) {
             const bonusText = formatModifier(totalBonus)
 
             return (
-              <div key={index} className="flex items-center justify-between border-b pb-2">
+              <div key={index} className="hover-glow flex items-center justify-between border-b pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-8 text-center font-medium">{bonusText}</div>
                   <div className="font-medium">{skill.name}</div>

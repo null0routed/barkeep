@@ -44,7 +44,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
       {abilityScoresOpen && (
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="strength">Strength</Label>
               <Input
                 id="strength"
@@ -57,7 +57,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
                 Modifier: {formatModifier(getAbilityModifier(character.stats.strength))}
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="dexterity">Dexterity</Label>
               <Input
                 id="dexterity"
@@ -70,7 +70,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
                 Modifier: {formatModifier(getAbilityModifier(character.stats.dexterity))}
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="constitution">Constitution</Label>
               <Input
                 id="constitution"
@@ -83,7 +83,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
                 Modifier: {formatModifier(getAbilityModifier(character.stats.constitution))}
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="intelligence">Intelligence</Label>
               <Input
                 id="intelligence"
@@ -96,7 +96,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
                 Modifier: {formatModifier(getAbilityModifier(character.stats.intelligence))}
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="wisdom">Wisdom</Label>
               <Input
                 id="wisdom"
@@ -109,7 +109,7 @@ export default function AbilityScoresSection({ character, setCharacter }: Abilit
                 Modifier: {formatModifier(getAbilityModifier(character.stats.wisdom))}
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="charisma">Charisma</Label>
               <Input
                 id="charisma"

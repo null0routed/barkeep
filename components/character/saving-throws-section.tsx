@@ -51,7 +51,7 @@ export default function SavingThrowsSection({ character, setCharacter }: SavingT
               const totalModifier = baseModifier + (isProficient ? proficiencyBonus : 0)
 
               return (
-                <div key={ability} className="flex flex-col items-center p-2 border rounded-md">
+                <div key={ability} className="hover-glow flex flex-col items-center p-2 border rounded-md">
                   <div className="text-lg font-bold">{formatModifier(totalModifier)}</div>
                   <div className="text-sm capitalize mb-2">{ability}</div>
                   <div className="flex items-center gap-2">

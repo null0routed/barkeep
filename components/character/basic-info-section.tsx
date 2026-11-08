@@ -41,23 +41,23 @@ export default function BasicInfoSection({ character, setCharacter }: BasicInfoS
       {basicInfoOpen && (
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="name">Character Name</Label>
               <Input id="name" name="name" value={character.name} onChange={handleBasicInfoChange} />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="class">Class</Label>
               <Input id="class" name="class" value={character.class} onChange={handleBasicInfoChange} />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="race">Race</Label>
               <Input id="race" name="race" value={character.race} onChange={handleBasicInfoChange} />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="level">Level</Label>
               <Input id="level" name="level" type="number" value={character.level} onChange={handleBasicInfoChange} />
             </div>
-            <div className="space-y-2 md:col-span-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2 md:col-span-2">
               <Label htmlFor="background">Background</Label>
               <Textarea
                 id="background"

@@ -69,9 +69,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
         <div className="space-y-4 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="spell-name">Name</Label>
               <Input
-                id="name"
+                id="spell-name"
                 value={spell.name}
                 onChange={(e) => setSpell({ ...spell, name: e.target.value })}
                 placeholder="Spell name"
@@ -79,7 +79,7 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="level">Level</Label>
+              <Label htmlFor="spell-level">Level</Label>
               <Select
                 value={spell.level.toString()}
                 onValueChange={(value) => setSpell({ ...spell, level: Number.parseInt(value) })}
@@ -104,7 +104,7 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="school">School</Label>
+            <Label htmlFor="spell-school">School</Label>
             <Select
               value={spell.school}
               onValueChange={(value) => setSpell({ ...spell, school: value as SpellSchool })}
@@ -127,9 +127,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="castingTime">Casting Time</Label>
+              <Label htmlFor="spell-castingTime">Casting Time</Label>
               <Input
-                id="castingTime"
+                id="spell-castingTime"
                 value={spell.castingTime}
                 onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })}
                 placeholder="e.g., 1 action, 1 minute"
@@ -137,9 +137,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="range">Range</Label>
+              <Label htmlFor="spell-range">Range</Label>
               <Input
-                id="range"
+                id="spell-range"
                 value={spell.range}
                 onChange={(e) => setSpell({ ...spell, range: e.target.value })}
                 placeholder="e.g., 60 feet, Self, Touch"
@@ -148,9 +148,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="duration">Duration</Label>
+            <Label htmlFor="spell-duration">Duration</Label>
             <Input
-              id="duration"
+              id="spell-duration"
               value={spell.duration}
               onChange={(e) => setSpell({ ...spell, duration: e.target.value })}
               placeholder="e.g., Instantaneous, 1 hour, Concentration (up to 10 minutes)"
@@ -162,31 +162,31 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
             <div className="flex space-x-4 items-center">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="verbal"
+                  id="spell-verbal"
                   checked={spell.verbal}
                   onCheckedChange={(checked) => setSpell({ ...spell, verbal: checked as boolean })}
                 />
-                <Label htmlFor="verbal" className="text-sm">
+                <Label htmlFor="spell-verbal" className="text-sm">
                   Verbal (V)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="somatic"
+                  id="spell-somatic"
                   checked={spell.somatic}
                   onCheckedChange={(checked) => setSpell({ ...spell, somatic: checked as boolean })}
                 />
-                <Label htmlFor="somatic" className="text-sm">
+                <Label htmlFor="spell-somatic" className="text-sm">
                   Somatic (S)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="material"
+                  id="spell-material"
                   checked={spell.material}
                   onCheckedChange={(checked) => setSpell({ ...spell, material: checked as boolean })}
                 />
-                <Label htmlFor="material" className="text-sm">
+                <Label htmlFor="spell-material" className="text-sm">
                   Material (M)
                 </Label>
               </div>
@@ -194,9 +194,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="materialComponents">Material Components</Label>
+            <Label htmlFor="spell-materialComponents">Material Components</Label>
             <Input
-              id="materialComponents"
+              id="spell-materialComponents"
               value={spell.materialComponents}
               onChange={(e) => setSpell({ ...spell, materialComponents: e.target.value })}
               placeholder="e.g., a pinch of sulfur"
@@ -205,9 +205,9 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="spell-description">Description</Label>
             <Textarea
-              id="description"
+              id="spell-description"
               value={spell.description}
               onChange={(e) => setSpell({ ...spell, description: e.target.value })}
               placeholder="Spell description"
@@ -217,11 +217,11 @@ export default function AddSpellDialog({ open, onOpenChange, onAdd, editingSpell
 
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="prepared"
+              id="spell-prepared"
               checked={spell.prepared}
               onCheckedChange={(checked) => setSpell({ ...spell, prepared: checked as boolean })}
             />
-            <Label htmlFor="prepared">Prepared</Label>
+            <Label htmlFor="spell-prepared">Prepared</Label>
           </div>
 
           <div className="flex justify-end space-x-2">

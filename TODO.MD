@@ -56,4 +56,10 @@
 
 22. (maybe) Inline code in chat renders as a full-width block. react-markdown v9+ removed the `inline` prop on the `code` component, so the inline-vs-block check in `components/markdown-body.tsx` never fires and inline `code` spans fall through to the block `<pre>` styling. If we ever want true inline `code` in bubbles, detect inline-ness some other way (e.g. checking the parent `pre` node). Confirmed quirk as of the #13 refactor; low urgency unless it actually bothers us. 
 
-23. I need to add something to the system prompt that specifies how the AI will call itself "Barkeep", adopt that persona, etc.
+25. ~~I need to add something to the system prompt that specifies how the AI will call itself "Barkeep", adopt that persona, etc.~~ — done in db5101f (built-in prompt replaced verbatim by "AI Dungeon Master System Prompt v2.md": Barkeep identity + OOC handling, sequential 4-step campaign setup, tone/pacing, roll adjudication, and continuity rules)
+
+26. Fix the rounded "Share with AI" in campaign notes.
+
+27. Implement the sprite sheet and sprite icons.
+
+28. Can we move the hover glow for the boxes to originate at the mouse and slightly diffuse the further away (so the hover glow is ever so slightly brighter near the mouse)?

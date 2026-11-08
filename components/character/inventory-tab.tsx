@@ -127,7 +127,7 @@ export default function InventoryTab({ character, setCharacter, editingInventory
               <div
                 key={index}
                 data-reorder-row
-                className={`border rounded-md p-3 ${
+                className={`hover-glow border rounded-md p-3 ${
                   reorderEnabled
                     ? isDropIndex(index, "before")
                       ? "border-t-2 border-t-primary"

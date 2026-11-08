@@ -49,9 +49,13 @@
   --color-user-bubble: hsl(var(--user-bubble));
   --color-user-bubble-foreground: hsl(var(--user-bubble-foreground));
 
-  /* border-radius scale (was `theme.extend.borderRadius`) */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* border-radius scale (was `theme.extend.borderRadius`).
+     Tavern theme (v1.2.0): --radius is 0 in :root, so rounded-* (sm/md/lg) and
+     every shadcn component collapse to square edges; the max() floors keep the
+     derived scale at a valid 0px rather than negative values. rounded-full
+     (badges, dots, avatars) stays round by design — coins and wax seals. */
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
 }
 
@@ -91,7 +95,9 @@
     --user-bubble: 28 45% 30%;
     --user-bubble-foreground: 42 50% 96%;
 
-    --radius: 0.5rem;
+    /* Tavern theme (v1.2.0): square edges. Revert to 0.5rem for the classic
+       rounded look. */
+    --radius: 0;
   }
 
   .dark {
@@ -222,7 +228,7 @@ body {
 .prose code {
   background-color: hsl(var(--muted));
   padding: 0.2em 0.4em;
-  border-radius: 0.25rem;
+  border-radius: 0;
   font-weight: 400;
 }
 .prose code::before,
@@ -231,10 +237,76 @@ body {
 }
 .prose pre {
   background-color: hsl(var(--muted));
-  border-radius: 0.25rem;
+  border-radius: 0;
   padding: 0.75rem 1rem;
 }
 .prose pre code {
   background-color: transparent;
   padding: 0;
+}
+
+/* Tavern theme (v1.2.0), variant C — "forged plate": one FILLED triangle at
+   each corner, vertex flush with the card's 2px border (inset: 0), like an
+   iron corner fitting on a timber panel. Solid primary amber — the same
+   "forged metal" accent as the active tab. Each triangle is an exact 45°
+   half of a square box (hard-stop linear-gradient), sized half of the
+   original 16px bracket arms. Applied to the Card and Dialog surfaces
+   (see components/ui/card.tsx, components/ui/dialog.tsx). */
+.corner-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  --corner-plate: 8px;
+  background:
+    linear-gradient(to bottom right, hsl(var(--primary)) 50%, transparent 50%) top left /
+      var(--corner-plate) var(--corner-plate) no-repeat,
+    linear-gradient(to bottom left, hsl(var(--primary)) 50%, transparent 50%) top right /
+      var(--corner-plate) var(--corner-plate) no-repeat,
+    linear-gradient(to top right, hsl(var(--primary)) 50%, transparent 50%) bottom left /
+      var(--corner-plate) var(--corner-plate) no-repeat,
+    linear-gradient(to top left, hsl(var(--primary)) 50%, transparent 50%) bottom right /
+      var(--corner-plate) var(--corner-plate) no-repeat;
+}
+
+/* Tavern theme (v1.2.0): candlelight in the room behind the panels — a faint
+   warm wash drifting in from the top-left, a deeper umber glow settling in the
+   bottom-right, over the base --background. Body backgrounds propagate to the
+   viewport canvas, so the light stays put while panels scroll: the ROOM is
+   lit, not the content. Alphas per the owner's spec (0.12 / 0.08). */
+body {
+  background:
+    radial-gradient(ellipse 60% 50% at 12% 0%, hsl(31 56% 35% / 0.12), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 92% 90%, hsl(24 60% 27% / 0.08), transparent 55%),
+    hsl(var(--background));
+}
+
+/* Tavern theme (v1.2.0): panels read as lit timber — a barely-there wash of
+   light descending from the top edge, a 1px inner catch-light, and warm umber
+   shadows (tinted, not gray-black) replacing shadcn's flat shadow-sm. Applied
+   to the .corner-plate surfaces (Card + DialogContent). */
+.tavern-panel {
+  background-image: linear-gradient(170deg, hsl(36 70% 82% / 0.05), transparent 45%);
+  box-shadow:
+    inset 0 1px 0 hsl(42 85% 88% / 0.08),
+    0 3px 10px hsl(22 50% 5% / 0.3),
+    0 1px 3px hsl(22 50% 5% / 0.25);
+}
+
+/* Tavern theme (v1.2.0): amber hover illumination for panel items — stat
+   blocks, trait/feat rows, inventory/equipment/skill entries, spell cards,
+   saving-throw boxes, chat bubbles. The glow sits AROUND the item (outer
+   shadows), not inside it: a faint hairline ring and a wide soft bloom, like
+   candlelight catching the item's edge rather than washing its face.
+   Deliberately faint — two alphas to taste: ring 0.10 / bloom 0.08. */
+.hover-glow {
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0),
+    0 0 16px 2px hsl(var(--primary) / 0);
+  transition: box-shadow 160ms ease;
+}
+.hover-glow:hover {
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.1),
+    0 0 16px 2px hsl(var(--primary) / 0.08);
 }

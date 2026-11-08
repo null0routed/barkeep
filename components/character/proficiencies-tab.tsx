@@ -65,7 +65,7 @@ export default function ProficienciesTab({ character, setCharacter, setIsAddProf
                 <div
                   key={proficiency.id}
                   data-reorder-row
-                  className={`border p-2 rounded-md ${
+                  className={`hover-glow border p-2 rounded-md ${
                     isDropIndex(index, "before")
                       ? "border-t-2 border-t-primary"
                       : isDropIndex(index, "after")

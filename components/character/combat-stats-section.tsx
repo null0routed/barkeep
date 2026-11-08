@@ -45,7 +45,7 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
       {combatStatsOpen && (
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="armorClass">Armor Class</Label>
               <Input
                 id="armorClass"
@@ -55,7 +55,7 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
                 onChange={handleCombatStatChange}
               />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="currentHp">Current HP</Label>
               <Input
                 id="currentHp"
@@ -65,7 +65,7 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
                 onChange={handleCombatStatChange}
               />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="maxHp">Max HP</Label>
               <Input
                 id="maxHp"
@@ -75,7 +75,7 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
                 onChange={handleCombatStatChange}
               />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="speed">Speed (ft)</Label>
               <Input
                 id="speed"
@@ -85,9 +85,9 @@ export default function CombatStatsSection({ character, setCharacter }: CombatSt
                 onChange={handleCombatStatChange}
               />
             </div>
-            <div className="space-y-2">
+            <div className="hover-glow border rounded-md p-2 space-y-2">
               <Label htmlFor="proficiencyBonus">Proficiency Bonus</Label>
-              <div className="h-10 px-3 py-2 rounded-md border border-input bg-muted flex items-center justify-center font-medium">
+              <div className="hover-glow h-10 px-3 py-2 rounded-md border border-input bg-muted flex items-center justify-center font-medium">
                 +{proficiencyBonus}
               </div>
             </div>

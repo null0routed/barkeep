@@ -165,7 +165,7 @@ export default function AddTraitDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="trait-name">Name</Label>
               <Button
                 type="button"
                 size="sm"
@@ -185,14 +185,14 @@ export default function AddTraitDialog({
                 )}
               </Button>
             </div>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Trait name" />
+            <Input id="trait-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Trait name" />
             {generationError && <p className="text-xs text-destructive">{generationError}</p>}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="trait-description">Description</Label>
             <Textarea
-              id="description"
+              id="trait-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Trait description"
@@ -201,8 +201,8 @@ export default function AddTraitDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="source">Source</Label>
-            <Input id="source" value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g., Race, Background" />
+            <Label htmlFor="trait-source">Source</Label>
+            <Input id="trait-source" value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g., Race, Background" />
           </div>
 
           <div className="flex justify-end space-x-2">

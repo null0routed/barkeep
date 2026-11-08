@@ -118,7 +118,7 @@ export default function SpellSlotsSection({ character, setCharacter }: SpellSlot
           <div className="space-y-6">
             {/* Spellcasting stats (TODO.MD #14): the attack bonus + save DC pair the
                 stat block expects, shown above the slots they govern. */}
-            <div className="border rounded-md p-3">
+            <div className="hover-glow border rounded-md p-3">
               <div className="flex justify-between items-center gap-4">
                 <h3 className="font-medium">Spellcasting</h3>
                 <div className="flex items-center gap-4">
@@ -153,7 +153,7 @@ export default function SpellSlotsSection({ character, setCharacter }: SpellSlot
             </div>
 
             {/* Cantrips */}
-            <div className="border rounded-md p-3">
+            <div className="hover-glow border rounded-md p-3">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-medium">Cantrips</h3>
                 <div className="flex items-center gap-2">
@@ -178,7 +178,7 @@ export default function SpellSlotsSection({ character, setCharacter }: SpellSlot
               const { total, used, known } = character.spellSlots[levelKey]
 
               return (
-                <div key={level} className="border rounded-md p-3">
+                <div key={level} className="hover-glow border rounded-md p-3">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-medium">Level {level}</h3>
                     <div className="flex items-center gap-4">

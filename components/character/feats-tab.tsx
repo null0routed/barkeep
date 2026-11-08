@@ -114,7 +114,7 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
               <div
                 key={feat.id}
                 data-reorder-row
-                className={`border rounded-md p-3 ${
+                className={`hover-glow border rounded-md p-3 ${
                   reorderEnabled
                     ? isDropIndex(index, "before")
                       ? "border-t-2 border-t-primary"
@@ -169,17 +169,6 @@ export default function FeatsTab({ character, setCharacter, editingFeatIndex, se
                     <div className="flex justify-between items-start">
                       <h3 className="font-bold">{feat.name}</h3>
                       <div className="flex flex-col gap-1 sm:flex-row">
-                        {reorderEnabled && (
-                          <ReorderControls
-                            noun="feat"
-                            canMoveUp={index > 0}
-                            canMoveDown={index < character.feats.length - 1}
-                            onMoveUp={() => setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index - 1) }))}
-                            onMoveDown={() => setCharacter((prev) => ({ ...prev, feats: moveItem(prev.feats, index, index + 1) }))}
-                            onGripDragStart={(event) => startDrag(event, index)}
-                            onGripDragEnd={clearDrag}
-                          />
-                        )}
                         <Button size="icon" variant="ghost" aria-label="Edit feat" onClick={() => startEditingFeat(index)}>
                           <EditIcon className="h-4 w-4" />
                         </Button>

@@ -127,7 +127,7 @@ export default function SpellsTab({ character, setCharacter, setEditingSpell, se
                       <div
                         key={spell.id}
                         data-reorder-row
-                        className={`border rounded-md p-3 ${
+                        className={`hover-glow border rounded-md p-3 ${
                           isDropIndex(globalIndex, "before")
                             ? "border-t-2 border-t-primary"
                             : isDropIndex(globalIndex, "after")

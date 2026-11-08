@@ -408,7 +408,7 @@ const ChatMessageComponent = memo(
           </div>
 
           <div
-            className={`max-w-[85%] max-w-3xl rounded-lg p-3 text-sm ${
+            className={`hover-glow max-w-[85%] max-w-3xl rounded-lg p-3 text-sm ${
               isUser
                 ? isEditing
                   ? // T5-E6: in edit mode the bubble is a full-width editor
