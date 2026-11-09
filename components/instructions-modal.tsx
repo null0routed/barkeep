@@ -75,9 +75,9 @@ export default function InstructionsModal({ open, onOpenChange }: InstructionsMo
                   immediately
                 </li>
                 <li>
-                  <strong>Export to File:</strong> click the <span className="font-mono bg-muted px-1 rounded">Export</span>{" "}
-                  button to download a JSON save file with all your data — if an API key is set, you can choose
-                  whether to include it
+                  <strong>Export to File:</strong> use the <span className="font-mono bg-muted px-1 rounded">⋯</span>{" "}
+                  menu → <span className="font-mono text-xs">Export</span> to download a JSON save file with all
+                  your data — if an API key is set, you can choose whether to include it
                 </li>
                 <li>
                   <strong>Import from File:</strong> use the <span className="font-mono bg-muted px-1 rounded">⋯</span>{" "}

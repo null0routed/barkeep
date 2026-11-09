@@ -354,6 +354,15 @@ button:focus-visible > .spr-glow-sm.spr-action-trash {
      diffuse shape as the amber stage above (see the box fix). */
   filter: drop-shadow(0 0 1.5px rgb(255 128 100 / 0.45)) drop-shadow(0 0 14px rgb(229 42 26 / 0.48));
 }
+/* v1.2.0 owner direction: in the LIGHT theme the hover glow is purple too —
+   it now matches the resting halo (the v8 batch kept amber hover; the owner
+   corrected: light-mode hover should read purple as well). Destructive trash
+   keeps its red hover in both themes (excluded here, and its own rule stays
+   untouched). Specificity (0,4,2) wins the amber rule above (0,2,1). */
+html.light button:hover > .spr-glow-sm:not(.spr-action-trash),
+html.light button:focus-visible > .spr-glow-sm:not(.spr-action-trash) {
+  filter: drop-shadow(0 0 1.5px rgb(196 181 253 / 0.4)) drop-shadow(0 0 14px rgb(139 92 246 / 0.45));
+}
 
 /* owner direction: on hover the GLOW is the only cue — no background "box".
    The ghost variant's hover:bg-muted (and any per-button hover tint) would
@@ -372,6 +381,13 @@ button:has(> .spr-glow-sm):focus-visible {
 button:has(> .spr-glow-sm.spr-action-trash):hover,
 button:has(> .spr-glow-sm.spr-action-trash):focus-visible {
   background-image: radial-gradient(60% 60% at 50% 50%, rgb(229 42 26 / 0.24), transparent 75%);
+}
+/* v1.2.0 owner direction: the light-theme hover POOL follows the purple
+   signal as well (v8's pool was amber in both themes). Trash is excluded by
+   :not(), so the red pool rule above is untouched. */
+html.light button:has(> .spr-glow-sm:not(.spr-action-trash)):hover,
+html.light button:has(> .spr-glow-sm:not(.spr-action-trash)):focus-visible {
+  background-image: radial-gradient(60% 60% at 50% 50%, rgb(139 92 246 / 0.22), transparent 75%);
 }
 
 /* owner direction: the disabled reorder arrows should read as clearly OFF —

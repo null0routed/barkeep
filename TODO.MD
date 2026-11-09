@@ -63,3 +63,5 @@
 27. Implement the sprite sheet and sprite icons.
 
 28. Can we move the hover glow for the boxes to originate at the mouse and slightly diffuse the further away (so the hover glow is ever so slightly brighter near the mouse)?
+
+29. Websearch feature to pull rules from the web if needed?

@@ -1,9 +1,9 @@
 /* Barkeep sprite sheet. Generated; edit tools/pack.py names, not this file.
-   Sheet: 965x963px, 54 sprites. Native sprite sizes are large (~65-190px),
+   Sheet: 1056x1023px, 55 sprites. Native sprite sizes are large (~65-190px),
    so scale them down with --s (on the element or any ancestor), e.g.  <span class="spr spr-sword" style="--s:.25"></span>  -> ~36px. */
 .spr {
-  --sheet-w: 965;
-  --sheet-h: 963;
+  --sheet-w: 1056;
+  --sheet-h: 1023;
   display: inline-block;
   flex: none;
   vertical-align: middle;
@@ -42,56 +42,57 @@
 .spr-scroll { --x:377; --y:150; --w:100; --h:100; }
 .spr-lute { --x:483; --y:150; --w:126; --h:123; }
 .spr-lute-alt { --x:615; --y:150; --w:111; --h:119; }
+.spr-gauntlet { --x:732; --y:150; --w:318; --h:199; }
 
 /* ambient */
-.spr-candle { --x:6; --y:301; --w:72; --h:112; }
-.spr-candle-snuffed { --x:84; --y:301; --w:73; --h:130; --glow:120 160 220; }
-.spr-spilled-ale { --x:163; --y:301; --w:110; --h:75; }
-.spr-pipe { --x:279; --y:301; --w:85; --h:77; }
-.spr-mug { --x:370; --y:301; --w:76; --h:81; }
-.spr-active-chat { --x:452; --y:301; --w:106; --h:94; }
+.spr-candle { --x:6; --y:361; --w:72; --h:112; }
+.spr-candle-snuffed { --x:84; --y:361; --w:73; --h:130; --glow:120 160 220; }
+.spr-spilled-ale { --x:163; --y:361; --w:110; --h:75; }
+.spr-pipe { --x:279; --y:361; --w:85; --h:77; }
+.spr-mug { --x:370; --y:361; --w:76; --h:81; }
+.spr-active-chat { --x:452; --y:361; --w:106; --h:94; }
 
 /* actions */
-.spr-action-drag { --x:6; --y:443; --w:137; --h:142; }
-.spr-action-trash { --x:149; --y:443; --w:116; --h:147; }
-.spr-action-retry { --x:271; --y:443; --w:178; --h:122; }
-.spr-action-search { --x:455; --y:443; --w:152; --h:159; --glow:255 190 80; }
-.spr-arrow-up { --x:613; --y:443; --w:38; --h:61; }
-.spr-arrow-down { --x:657; --y:443; --w:40; --h:63; }
-.spr-retry-cw { --x:703; --y:443; --w:68; --h:69; }
-.spr-retry-ccw { --x:777; --y:443; --w:68; --h:69; }
+.spr-action-drag { --x:6; --y:503; --w:137; --h:142; }
+.spr-action-trash { --x:149; --y:503; --w:116; --h:147; }
+.spr-action-retry { --x:271; --y:503; --w:178; --h:122; }
+.spr-action-search { --x:455; --y:503; --w:152; --h:159; --glow:255 190 80; }
+.spr-arrow-up { --x:613; --y:503; --w:38; --h:61; }
+.spr-arrow-down { --x:657; --y:503; --w:40; --h:63; }
+.spr-retry-cw { --x:703; --y:503; --w:68; --h:69; }
+.spr-retry-ccw { --x:777; --y:503; --w:68; --h:69; }
 
 /* bottles */
-.spr-bottle-common { --x:6; --y:614; --w:86; --h:111; }
-.spr-bottle-uncommon { --x:98; --y:614; --w:84; --h:114; }
-.spr-bottle-rare { --x:188; --y:614; --w:85; --h:115; }
-.spr-bottle-very-rare { --x:279; --y:614; --w:66; --h:126; }
-.spr-bottle-legendary { --x:351; --y:614; --w:74; --h:128; }
-.spr-bottle-artifact { --x:431; --y:614; --w:72; --h:123; }
-.spr-bottle-unknown { --x:509; --y:614; --w:59; --h:112; }
+.spr-bottle-common { --x:6; --y:674; --w:86; --h:111; }
+.spr-bottle-uncommon { --x:98; --y:674; --w:84; --h:114; }
+.spr-bottle-rare { --x:188; --y:674; --w:85; --h:115; }
+.spr-bottle-very-rare { --x:279; --y:674; --w:66; --h:126; }
+.spr-bottle-legendary { --x:351; --y:674; --w:74; --h:128; }
+.spr-bottle-artifact { --x:431; --y:674; --w:72; --h:123; }
+.spr-bottle-unknown { --x:509; --y:674; --w:59; --h:112; }
 
 /* schools */
-.spr-school-abjuration { --x:6; --y:754; --w:114; --h:131; }
-.spr-school-conjuration { --x:126; --y:754; --w:115; --h:115; }
-.spr-school-divination { --x:247; --y:754; --w:98; --h:121; }
-.spr-school-enchantment { --x:351; --y:754; --w:123; --h:110; }
-.spr-school-evocation { --x:480; --y:754; --w:110; --h:122; }
-.spr-school-illusion { --x:596; --y:754; --w:121; --h:98; }
-.spr-school-necromancy { --x:723; --y:754; --w:107; --h:118; }
-.spr-school-transmutation { --x:836; --y:754; --w:123; --h:125; }
+.spr-school-abjuration { --x:6; --y:814; --w:114; --h:131; }
+.spr-school-conjuration { --x:126; --y:814; --w:115; --h:115; }
+.spr-school-divination { --x:247; --y:814; --w:98; --h:121; }
+.spr-school-enchantment { --x:351; --y:814; --w:123; --h:110; }
+.spr-school-evocation { --x:480; --y:814; --w:110; --h:122; }
+.spr-school-illusion { --x:596; --y:814; --w:121; --h:98; }
+.spr-school-necromancy { --x:723; --y:814; --w:107; --h:118; }
+.spr-school-transmutation { --x:836; --y:814; --w:123; --h:125; }
 
 /* runes */
-.spr-rune-orange { --x:6; --y:897; --w:45; --h:60; --glow:255 150 50; }
-.spr-rune-green { --x:57; --y:897; --w:56; --h:55; --glow:80 230 150; }
-.spr-rune-blue { --x:119; --y:897; --w:53; --h:58; --glow:90 160 255; }
-.spr-rune-red { --x:178; --y:897; --w:45; --h:58; --glow:255 80 70; }
-.spr-rune-yellow { --x:229; --y:897; --w:40; --h:60; --glow:255 210 80; }
-.spr-rune-purple { --x:275; --y:897; --w:51; --h:53; --glow:190 100 255; }
-.spr-rune-f-blue { --x:332; --y:897; --w:31; --h:42; --glow:90 190 255; }
-.spr-rune-r-green { --x:369; --y:897; --w:28; --h:42; --glow:80 230 110; }
-.spr-rune-b-blue { --x:403; --y:897; --w:32; --h:46; --glow:90 140 255; }
-.spr-rune-hook-purple { --x:441; --y:897; --w:40; --h:49; --glow:150 110 255; }
-.spr-rune-arrow-red { --x:487; --y:897; --w:34; --h:39; --glow:255 70 70; }
-.spr-rune-zigzag-orange { --x:527; --y:897; --w:32; --h:42; --glow:255 170 60; }
-.spr-rune-k-orange { --x:565; --y:897; --w:29; --h:41; --glow:255 150 50; }
-.spr-rune-loop-purple { --x:600; --y:897; --w:40; --h:50; --glow:190 100 255; }
+.spr-rune-orange { --x:6; --y:957; --w:45; --h:60; --glow:255 150 50; }
+.spr-rune-green { --x:57; --y:957; --w:56; --h:55; --glow:80 230 150; }
+.spr-rune-blue { --x:119; --y:957; --w:53; --h:58; --glow:90 160 255; }
+.spr-rune-red { --x:178; --y:957; --w:45; --h:58; --glow:255 80 70; }
+.spr-rune-yellow { --x:229; --y:957; --w:40; --h:60; --glow:255 210 80; }
+.spr-rune-purple { --x:275; --y:957; --w:51; --h:53; --glow:190 100 255; }
+.spr-rune-f-blue { --x:332; --y:957; --w:31; --h:42; --glow:90 190 255; }
+.spr-rune-r-green { --x:369; --y:957; --w:28; --h:42; --glow:80 230 110; }
+.spr-rune-b-blue { --x:403; --y:957; --w:32; --h:46; --glow:90 140 255; }
+.spr-rune-hook-purple { --x:441; --y:957; --w:40; --h:49; --glow:150 110 255; }
+.spr-rune-arrow-red { --x:487; --y:957; --w:34; --h:39; --glow:255 70 70; }
+.spr-rune-zigzag-orange { --x:527; --y:957; --w:32; --h:42; --glow:255 170 60; }
+.spr-rune-k-orange { --x:565; --y:957; --w:29; --h:41; --glow:255 150 50; }
+.spr-rune-loop-purple { --x:600; --y:957; --w:40; --h:50; --glow:190 100 255; }

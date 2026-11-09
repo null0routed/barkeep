@@ -816,10 +816,12 @@ export default function Home() {
               target-theme reading: in dark mode the candle is LIT (tap →
               light), in light mode it's SNUFFED (tap → dark). Heights kept
               equal despite different native cells (112px vs 130px), so the
-              button content doesn't jump on toggle. Sits beside the outline
-              "More" icon, matching its size/weight. */}
+              button content doesn't jump on toggle. Ghost, no border box —
+              owner direction v10: the outline border read as a "box around
+              the icon"; the candle art is the whole cue. Same size as the
+              "More" icon next door. */}
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}

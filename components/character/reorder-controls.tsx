@@ -54,8 +54,12 @@ export default function ReorderControls({
         className="cursor-grab px-0.5 py-1 active:cursor-grabbing"
         aria-hidden="true"
       >
-        {/* v1.2.0: second +10% bump (owner: the rail still reads small) */}
-        <SpriteIcon name="action-drag" s={0.133} />
+        {/* v1.2.0 (sprite sheet v3): the drag grip is now the new
+            .spr-gauntlet art (owner: replace the action-drag hand). The cell
+            is much WIDER than the old one (318×199 vs 137×142 native), so
+            the scale drops to hold a render height comparable to the old
+            grip (~19px tall). */}
+        <SpriteIcon name="gauntlet" s={0.095} />
       </span>
       <Button
         size="icon"
